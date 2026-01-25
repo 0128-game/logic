@@ -145,7 +145,7 @@
             
             const now = Date.now();
             // --- 削除判定: 前回のクリックから1秒以内か ---
-            if (now - comp.lastClick < 1000) {
+            if (now - comp.lastClick < 500) {
                 components = components.filter(c => c.id !== id);
                 wires = wires.filter(w => w.fromId !== id && w.toId !== id);
                 el.remove();
