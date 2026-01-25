@@ -32,13 +32,15 @@
         }
         .gate.active-on { border-color: #ff9800; background: #3e3b2b; box-shadow: 0 0 15px rgba(255, 152, 0, 0.3); }
         .gate-label { pointer-events: none; font-size: 11px; white-space: pre; }
-        
+
+        /* コメント用スタイル */
         .comment-node {
-            position: absolute; min-width: 100px; padding: 8px; background: rgba(241, 196, 15, 0.15); 
+            position: absolute; min-width: 120px; padding: 8px; background: rgba(241, 196, 15, 0.15); 
             border: 1px dashed #f1c40f; color: #f1c40f; cursor: move; z-index: 4; font-size: 13px; border-radius: 4px;
         }
-        .comment-node input {
+        .comment-node textarea {
             background: transparent; border: none; color: inherit; font-family: inherit; font-size: inherit; width: 100%; outline: none;
+            resize: none; overflow: hidden; display: block; padding: 0; line-height: 1.4;
         }
 
         .terminal { position: absolute; width: 14px; height: 14px; background: #555; border-radius: 50%; border: 2px solid #1a1c2c; cursor: pointer; z-index: 10; }
@@ -163,10 +165,21 @@
         el.className = 'comment-node';
         el.style.left = comp.x + 'px'; el.style.top = comp.y + 'px';
 
-        const input = document.createElement('input');
-        input.value = comp.text || "メモを入力...";
-        input.onchange = (e) => { comp.text = e.target.value; saveHistory(); };
-        input.onmousedown = (e) => e.stopPropagation(); // ドラッグ防止
+        const textarea = document.createElement('textarea');
+        textarea.value = comp.text || "メモを入力...";
+        
+        // テキストエリアの高さを自動調整する関数
+        const autoResize = () => {
+            textarea.style.height = 'auto';
+            textarea.style.height = textarea.scrollHeight + 'px';
+        };
+
+        textarea.oninput = (e) => { 
+            comp.text = e.target.value; 
+            autoResize();
+        };
+        textarea.onchange = () => saveHistory();
+        textarea.onmousedown = (e) => e.stopPropagation(); // ドラッグ防止
         
         el.onmousedown = (e) => {
             const now = Date.now();
@@ -178,8 +191,11 @@
             draggingObj = comp;
         };
 
-        el.appendChild(input);
+        el.appendChild(textarea);
         container.appendChild(el);
+        
+        // 初期描画時に高さを合わせる
+        setTimeout(autoResize, 0);
     }
 
     function renderGate(comp) {
