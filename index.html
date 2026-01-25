@@ -130,12 +130,16 @@
     }
 
     function applyState(state) {
-        components = state.components.map(c => ({...c}));
-        wires = state.wires.map(w => ({...w}));
-        // キャンバス上のすべての表示要素（ゲートとコメント）をクリア
+        // Deep copy components and wires to maintain text field and other properties
+        components = state.components.map(c => ({ ...c }));
+        wires = state.wires.map(w => ({ ...w }));
+
+        // Clear existing elements
         container.querySelectorAll('.gate, .comment-node').forEach(el => el.remove());
-        // 読み込んだコンポーネントを再描画
+
+        // Re-render each component based on loaded state
         components.forEach(c => renderComponent(c));
+        
         updateLogic();
         updateUndoButtons();
     }
