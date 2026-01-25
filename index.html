@@ -2,40 +2,46 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Logic Circuit Sim - Fixed Terminals</title>
+    <title>Logic Circuit Sim - Terminal Fix</title>
     <style>
         body { font-family: sans-serif; display: flex; margin: 0; height: 100vh; overflow: hidden; background: #eef2f3; user-select: none; }
         #sidebar { width: 200px; background: #2c3e50; color: white; padding: 15px; display: flex; flex-direction: column; gap: 8px; z-index: 10; }
-        .component-template { background: #34495e; border: 1px solid #5d6d7e; padding: 10px; cursor: grab; text-align: center; border-radius: 4px; font-weight: bold; }
+        .component-template { background: #34495e; border: 1px solid #5d6d7e; padding: 10px; cursor: grab; text-align: center; border-radius: 4px; font-weight: bold; font-size: 13px; }
         .component-template:hover { background: #1abc9c; }
         #canvas-container { flex-grow: 1; position: relative; background: #fff; background-image: radial-gradient(#d1d1d1 1px, transparent 1px); background-size: 20px 20px; }
+        
+        /* ゲート本体 */
         .gate { 
             position: absolute; width: 80px; height: 50px; background: white; border: 2px solid #333; 
-            display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: move; z-index: 5; border-radius: 4px;
+            display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: move; z-index: 5; border-radius: 4px; text-align: center;
         }
         .gate.active-on { border-color: #f1c40f; background: #fffde7; box-shadow: 0 0 15px rgba(241, 196, 15, 0.5); }
+        .gate-label { pointer-events: none; font-size: 11px; white-space: pre; }
+
+        /* 端子 */
         .terminal { 
             position: absolute; width: 14px; height: 14px; background: #bdc3c7; border-radius: 50%; border: 2px solid #333; 
             cursor: pointer; z-index: 10;
         }
         .terminal:hover { background: #e74c3c; transform: scale(1.2); }
-        .terminal.selected { background: #e74c3c; box-shadow: 0 0 10px #e74c3c; }
-        /* 端子位置 */
+        .terminal.selected { background: #e74c3c; box-shadow: 0 0 10px #e74c3c; border-color: white; }
+        
         .in1 { left: -10px; top: 8px; }
         .in2 { left: -10px; top: 28px; }
         .out { right: -10px; top: 18px; }
         /* 1入力用(NOT, LIGHT)の中央寄せ */
         .single-in .in1 { top: 18px; }
+        
         svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
     </style>
 </head>
 <body>
 
 <div id="sidebar">
-    <h3>パーツ</h3>
+    <h3 style="margin:0 0 10px 0">回路パーツ</h3>
     <div class="component-template" draggable="true" data-type="SWITCH">SWITCH</div>
     <div class="component-template" draggable="true" data-type="LIGHT">LIGHT</div>
-    <hr style="width:100%">
+    <hr style="width:100%; border:0; border-top:1px solid #5d6d7e">
     <div class="component-template" draggable="true" data-type="AND">AND</div>
     <div class="component-template" draggable="true" data-type="OR">OR</div>
     <div class="component-template" draggable="true" data-type="NOT">NOT</div>
@@ -76,7 +82,8 @@
                 
                 const el = document.getElementById(c.id);
                 if(el) {
-                    el.innerText = (c.type==='SWITCH'||c.type==='LIGHT') ? `${c.type}\n(${c.value})` : c.type;
+                    const label = el.querySelector('.gate-label');
+                    label.innerText = (c.type==='SWITCH'||c.type==='LIGHT') ? `${c.type}\n(${c.value})` : c.type;
                     c.value ? el.classList.add('active-on') : el.classList.remove('active-on');
                 }
             });
@@ -112,12 +119,16 @@
         components.push(comp);
         
         const el = document.createElement('div');
-        el.id = id; el.className = `gate ${['NOT','LIGHT'].includes(type) ? 'single-in' : ''}`;
+        el.id = id; 
+        el.className = `gate ${['NOT','LIGHT'].includes(type) ? 'single-in' : ''}`;
         el.style.left = comp.x + 'px'; el.style.top = comp.y + 'px';
-        el.innerText = type;
 
-        // --- 端子の生成ロジック ---
-        // スイッチ以外は入力をつける
+        // ラベル用要素 (innerTextで上書きされないように分離)
+        const label = document.createElement('span');
+        label.className = 'gate-label';
+        el.appendChild(label);
+
+        // 入力端子
         if (type !== 'SWITCH') {
             const names = (type === 'NOT' || type === 'LIGHT') ? ['in1'] : ['in1', 'in2'];
             names.forEach(n => {
@@ -126,7 +137,7 @@
                 el.appendChild(t);
             });
         }
-        // ライト以外は出力をつける
+        // 出力端子
         if (type !== 'LIGHT') {
             const t = document.createElement('div'); t.className = `terminal out`;
             t.onclick = (ev) => { ev.stopPropagation(); connect(id, 'out', t); };
