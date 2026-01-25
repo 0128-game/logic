@@ -2,27 +2,33 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MIL Logic Simulator - Improved Delete</title>
+    <title>MIL Logic Simulator - Glowing Wires</title>
     <style>
-        body { font-family: sans-serif; display: flex; margin: 0; height: 100vh; overflow: hidden; background: #eef2f3; user-select: none; }
-        #sidebar { width: 200px; background: #2c3e50; color: white; padding: 15px; display: flex; flex-direction: column; gap: 8px; z-index: 10; }
-        .component-template { background: #34495e; border: 1px solid #5d6d7e; padding: 10px; cursor: grab; text-align: center; border-radius: 4px; font-weight: bold; font-size: 13px; }
-        .component-template:hover { background: #1abc9c; }
-        #canvas-container { flex-grow: 1; position: relative; background: #fff; background-image: radial-gradient(#d1d1d1 1px, transparent 1px); background-size: 20px 20px; }
+        body { font-family: sans-serif; display: flex; margin: 0; height: 100vh; overflow: hidden; background: #1a1c2c; user-select: none; }
         
+        /* サイドバー：ダークテーマ */
+        #sidebar { width: 200px; background: #25283d; color: #efefef; padding: 15px; display: flex; flex-direction: column; gap: 8px; z-index: 10; border-right: 1px solid #444; }
+        .component-template { background: #3b3f5c; border: 1px solid #5d6d7e; padding: 10px; cursor: grab; text-align: center; border-radius: 4px; font-weight: bold; font-size: 13px; color: #fff; }
+        .component-template:hover { background: #5a608d; }
+
+        /* キャンバス：ダークモードで見やすく */
+        #canvas-container { flex-grow: 1; position: relative; background: #1a1c2c; background-image: radial-gradient(#333 1px, transparent 1px); background-size: 25px 25px; }
+        
+        /* ゲート本体 */
         .gate { 
-            position: absolute; width: 80px; height: 50px; background: white; border: 2px solid #333; 
-            display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: move; z-index: 5; border-radius: 4px; text-align: center;
+            position: absolute; width: 80px; height: 50px; background: #2d314d; border: 2px solid #555; 
+            display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: move; z-index: 5; border-radius: 4px; text-align: center; color: #fff;
         }
-        .gate.active-on { border-color: #f1c40f; background: #fffde7; box-shadow: 0 0 15px rgba(241, 196, 15, 0.5); }
+        .gate.active-on { border-color: #ff9800; background: #3e3b2b; box-shadow: 0 0 15px rgba(255, 152, 0, 0.3); }
         .gate-label { pointer-events: none; font-size: 11px; white-space: pre; }
 
+        /* 端子 */
         .terminal { 
-            position: absolute; width: 14px; height: 14px; background: #bdc3c7; border-radius: 50%; border: 2px solid #333; 
+            position: absolute; width: 14px; height: 14px; background: #555; border-radius: 50%; border: 2px solid #1a1c2c; 
             cursor: pointer; z-index: 10;
         }
-        .terminal:hover { background: #e74c3c; transform: scale(1.2); }
-        .terminal.selected { background: #e74c3c; box-shadow: 0 0 10px #e74c3c; border-color: white; }
+        .terminal:hover { background: #ff5722; transform: scale(1.2); }
+        .terminal.selected { background: #ff5722; box-shadow: 0 0 10px #ff5722; border-color: white; }
         
         .in1 { left: -10px; top: 8px; }
         .in2 { left: -10px; top: 28px; }
@@ -30,6 +36,20 @@
         .single-in .in1 { top: 18px; }
         
         svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+        
+        /* 光る線のエフェクト */
+        .wire-on {
+            stroke: #ff9800;
+            stroke-width: 4;
+            filter: drop-shadow(0 0 5px #ff9800);
+            transition: stroke 0.2s, filter 0.2s;
+        }
+        .wire-off {
+            stroke: #444;
+            stroke-width: 3;
+            filter: none;
+            transition: stroke 0.2s;
+        }
     </style>
 </head>
 <body>
@@ -38,7 +58,7 @@
     <h3 style="margin:0 0 10px 0">回路パーツ</h3>
     <div class="component-template" draggable="true" data-type="SWITCH">SWITCH</div>
     <div class="component-template" draggable="true" data-type="LIGHT">LIGHT</div>
-    <hr style="width:100%; border:0; border-top:1px solid #5d6d7e">
+    <hr style="width:100%; border:0; border-top:1px solid #444">
     <div class="component-template" draggable="true" data-type="AND">AND</div>
     <div class="component-template" draggable="true" data-type="OR">OR</div>
     <div class="component-template" draggable="true" data-type="NOT">NOT</div>
@@ -46,7 +66,10 @@
     <div class="component-template" draggable="true" data-type="NOR">NOR</div>
     <div class="component-template" draggable="true" data-type="XOR">XOR</div>
     <div class="component-template" draggable="true" data-type="XNOR">XNOR</div>
-    <p style="font-size: 10px; color: #ccc; margin-top:20px;">※1秒以内に2回クリックで削除</p>
+    <p style="font-size: 10px; color: #888; margin-top:20px;">
+        ・1が流れると線が発光<br>
+        ・300ms以内クリックで削除
+    </p>
 </div>
 
 <div id="canvas-container"><svg id="connections-svg"></svg></div>
@@ -61,7 +84,7 @@
 
     function updateLogic() {
         components.forEach(c => { if(c.type !== 'SWITCH') c.inputs = { in1: 0, in2: 0 }; });
-        for(let i = 0; i < 5; i++) {
+        for(let i = 0; i < 10; i++) {
             wires.forEach(w => {
                 const src = components.find(c => c.id === w.fromId);
                 const tgt = components.find(c => c.id === w.toId);
@@ -69,8 +92,8 @@
             });
             components.forEach(c => {
                 const i1 = c.inputs?.in1 || 0; const i2 = c.inputs?.in2 || 0;
-                if(c.type === 'AND') c.value = i1 && i2;
-                else if(c.type === 'OR') c.value = i1 || i2;
+                if(c.type === 'AND') c.value = i1 && i2 ? 1 : 0;
+                else if(c.type === 'OR') c.value = i1 || i2 ? 1 : 0;
                 else if(c.type === 'NOT') c.value = i1 ? 0 : 1;
                 else if(c.type === 'NAND') c.value = (i1 && i2) ? 0 : 1;
                 else if(c.type === 'NOR') c.value = (i1 || i2) ? 0 : 1;
@@ -97,11 +120,18 @@
             const tEl = document.getElementById(w.toId)?.querySelector('.' + w.toTerm);
             if(!fEl || !tEl) return;
             const r1 = fEl.getBoundingClientRect(); const r2 = tEl.getBoundingClientRect();
+            const sourceComp = components.find(c => c.id === w.fromId);
+            const isOn = sourceComp && sourceComp.value === 1;
+
             const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-            line.setAttribute("x1", r1.left - cr.left + 7); line.setAttribute("y1", r1.top - cr.top + 7);
-            line.setAttribute("x2", r2.left - cr.left + 7); line.setAttribute("y2", r2.top - cr.top + 7);
-            line.setAttribute("stroke", components.find(c=>c.id===w.fromId).value ? "#f39c12" : "#333");
-            line.setAttribute("stroke-width", "3");
+            line.setAttribute("x1", r1.left - cr.left + 7);
+            line.setAttribute("y1", r1.top - cr.top + 7);
+            line.setAttribute("x2", r2.left - cr.left + 7);
+            line.setAttribute("y2", r2.top - cr.top + 7);
+            
+            // クラスを切り替えて光らせる
+            line.setAttribute("class", isOn ? "wire-on" : "wire-off");
+            
             svg.appendChild(line);
         });
     }
@@ -139,13 +169,10 @@
             el.appendChild(t);
         }
 
-        // クリック判定とドラッグ開始
         el.onmousedown = (e) => {
             if(e.target.classList.contains('terminal')) return;
-            
             const now = Date.now();
-            // --- 削除判定: 前回のクリックから1秒以内か ---
-            if (now - comp.lastClick < 500) {
+            if (now - comp.lastClick < 300) {
                 components = components.filter(c => c.id !== id);
                 wires = wires.filter(w => w.fromId !== id && w.toId !== id);
                 el.remove();
@@ -154,11 +181,7 @@
                 return;
             }
             comp.lastClick = now;
-
-            if(type === 'SWITCH') { 
-                comp.value = comp.value ? 0 : 1; 
-                updateLogic(); 
-            }
+            if(type === 'SWITCH') { comp.value = comp.value ? 0 : 1; updateLogic(); }
             draggingObj = comp;
         };
 
