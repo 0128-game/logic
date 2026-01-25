@@ -132,7 +132,9 @@
     function applyState(state) {
         components = state.components.map(c => ({...c}));
         wires = state.wires.map(w => ({...w}));
+        // キャンバス上のすべての表示要素（ゲートとコメント）をクリア
         container.querySelectorAll('.gate, .comment-node').forEach(el => el.remove());
+        // 読み込んだコンポーネントを再描画
         components.forEach(c => renderComponent(c));
         updateLogic();
         updateUndoButtons();
@@ -166,9 +168,8 @@
         el.style.left = comp.x + 'px'; el.style.top = comp.y + 'px';
 
         const textarea = document.createElement('textarea');
-        textarea.value = comp.text || "メモを入力...";
+        textarea.value = comp.text || "";
         
-        // テキストエリアの高さを自動調整する関数
         const autoResize = () => {
             textarea.style.height = 'auto';
             textarea.style.height = textarea.scrollHeight + 'px';
@@ -179,7 +180,7 @@
             autoResize();
         };
         textarea.onchange = () => saveHistory();
-        textarea.onmousedown = (e) => e.stopPropagation(); // ドラッグ防止
+        textarea.onmousedown = (e) => e.stopPropagation(); 
         
         el.onmousedown = (e) => {
             const now = Date.now();
@@ -194,7 +195,6 @@
         el.appendChild(textarea);
         container.appendChild(el);
         
-        // 初期描画時に高さを合わせる
         setTimeout(autoResize, 0);
     }
 
@@ -246,7 +246,6 @@
         if (type !== 'COMMENT') updateLogic();
     }
 
-    // --- ロジック・描画更新 ---
     function updateLogic() {
         components.forEach(c => { if(!['SWITCH', 'COMMENT'].includes(c.type)) c.inputs = { in1: 0, in2: 0 }; });
         for(let i = 0; i < 10; i++) {
@@ -299,7 +298,6 @@
         });
     }
 
-    // --- イベント ---
     async function captureCanvas() {
         const btn = document.querySelector('.btn-export');
         btn.innerText = "処理中...";
@@ -318,7 +316,12 @@
     }
 
     function exportCircuit() {
-        const data = { components: components.map(c => ({ id: c.id, type: c.type, x: c.x, y: c.y, value: c.value, text: c.text })), wires: wires };
+        const data = { 
+            components: components.map(c => ({ 
+                id: c.id, type: c.type, x: c.x, y: c.y, value: c.value, text: c.text 
+            })), 
+            wires: wires 
+        };
         document.getElementById('save-code-area').value = btoa(JSON.stringify(data));
     }
 
