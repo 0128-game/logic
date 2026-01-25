@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MIL Logic Simulator</title>
+    <title>MIL Logic Simulator - Undo/Redo</title>
     <style>
         body { font-family: sans-serif; display: flex; margin: 0; height: 100vh; overflow: hidden; background: #1a1c2c; user-select: none; }
         
@@ -12,11 +12,14 @@
 
         .io-section { margin-top: 10px; padding-top: 15px; border-top: 1px solid #444; display: flex; flex-direction: column; gap: 8px; }
         .io-btn { border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; transition: 0.2s; font-size: 12px; }
+        .btn-undo { background: #7f8c8d; }
+        .btn-redo { background: #95a5a6; }
         .btn-save { background: #3498db; }
         .btn-load { background: #1abc9c; }
         .btn-export { background: #9b59b6; } 
         .btn-reset { background: #e74c3c; margin-top: 10px; }
         .io-btn:hover { opacity: 0.8; transform: translateY(-1px); }
+        .io-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
         #save-code-area { background: #1a1c2c; border: 1px solid #444; color: #00ffcc; font-family: monospace; font-size: 10px; padding: 8px; width: 100%; box-sizing: border-box; resize: none; height: 60px; border-radius: 4px; }
 
@@ -62,7 +65,11 @@
     <div class="component-template" draggable="true" data-type="XNOR">XNOR</div>
 
     <div class="io-section">
-        <textarea id="save-code-area" placeholder="ここにセーブコードが表示・入力されます"></textarea>
+        <div style="display: flex; gap: 4px;">
+            <button id="undo-btn" class="io-btn btn-undo" onclick="undo()" style="flex:1">UNDO</button>
+            <button id="redo-btn" class="io-btn btn-redo" onclick="redo()" style="flex:1">REDO</button>
+        </div>
+        <textarea id="save-code-area" placeholder="Code area..."></textarea>
         <button class="io-btn btn-save" onclick="exportCircuit()">SAVE CODE</button>
         <button class="io-btn btn-load" onclick="importCircuit()">LOAD CODE</button>
         <button class="io-btn btn-export" onclick="captureCanvas()">CAPTURE IMAGE</button>
@@ -80,89 +87,117 @@
     let draggingObj = null;
     let selectedTerminal = null;
 
-    // --- 画像書き出し機能 ---
-    async function captureCanvas() {
-        const btn = document.querySelector('.btn-export');
-        const originalText = btn.innerText;
-        btn.innerText = "Processing...";
-        
-        const canvas = await html2canvas(container, {
-            backgroundColor: '#1a1c2c',
-            scale: 2,
-            logging: false,
-            useCORS: true
+    // --- Undo/Redo システム ---
+    let history = [];
+    let historyIndex = -1;
+
+    function saveHistory() {
+        const state = JSON.stringify({
+            components: components.map(c => ({...c})),
+            wires: wires.map(w => ({...w}))
         });
         
-        const link = document.createElement('a');
-        link.download = 'logic-circuit.png';
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-        
-        btn.innerText = originalText;
+        // 同じ状態なら保存しない
+        if (historyIndex >= 0 && history[historyIndex] === state) return;
+
+        // redo以降を削除して新しい状態を追加
+        history = history.slice(0, historyIndex + 1);
+        history.push(state);
+        if (history.length > 50) history.shift(); else historyIndex++;
+        updateUndoButtons();
     }
 
-    // --- 全消去機能 ---
+    function undo() {
+        if (historyIndex > 0) {
+            historyIndex--;
+            applyState(JSON.parse(history[historyIndex]));
+        }
+    }
+
+    function redo() {
+        if (historyIndex < history.length - 1) {
+            historyIndex++;
+            applyState(JSON.parse(history[historyIndex]));
+        }
+    }
+
+    function applyState(state) {
+        components = state.components.map(c => ({...c}));
+        wires = state.wires.map(w => ({...w}));
+        container.querySelectorAll('.gate').forEach(el => el.remove());
+        components.forEach(c => renderGate(c));
+        updateLogic();
+        updateUndoButtons();
+    }
+
+    function updateUndoButtons() {
+        document.getElementById('undo-btn').disabled = historyIndex <= 0;
+        document.getElementById('redo-btn').disabled = historyIndex >= history.length - 1;
+    }
+
+    // ショートカットキー
+    window.addEventListener('keydown', (e) => {
+        if (e.ctrlKey || e.metaKey) {
+            if (e.key === 'z') { e.preventDefault(); undo(); }
+            if (e.key === 'y') { e.preventDefault(); redo(); }
+        }
+    });
+
+    // --- 各種機能 ---
+    async function captureCanvas() {
+        const btn = document.querySelector('.btn-export');
+        btn.innerText = "Processing...";
+        const canvas = await html2canvas(container, { backgroundColor: '#1a1c2c', scale: 2, logging: false });
+        const link = document.createElement('a');
+        link.download = 'logic-circuit.png'; link.href = canvas.toDataURL('image/png'); link.click();
+        btn.innerText = "CAPTURE IMAGE";
+    }
+
     function resetCanvas() {
         if (confirm("回路をすべて消去しますか？")) {
-            components = [];
-            wires = [];
+            components = []; wires = [];
             container.querySelectorAll('.gate').forEach(el => el.remove());
-            document.getElementById('save-code-area').value = "";
+            saveHistory();
             updateLogic();
         }
     }
 
-    // --- セーブ機能 ---
     function exportCircuit() {
-        const data = {
-            components: components.map(c => ({ id: c.id, type: c.type, x: c.x, y: c.y, value: c.value })),
-            wires: wires
-        };
+        const data = { components: components.map(c => ({ id: c.id, type: c.type, x: c.x, y: c.y, value: c.value })), wires: wires };
         document.getElementById('save-code-area').value = btoa(JSON.stringify(data));
     }
 
-    // --- ロード機能 ---
     function importCircuit() {
         const code = document.getElementById('save-code-area').value.trim();
         if(!code) return;
         try {
             const data = JSON.parse(atob(code));
-            components = [];
-            wires = [];
-            container.querySelectorAll('.gate').forEach(el => el.remove());
-            data.components.forEach(c => createGate(c.type, c.x, c.y, c.id, c.value));
-            wires = data.wires;
-            updateLogic();
-        } catch(e) {
-            alert("ロードに失敗しました。");
-        }
+            applyState(data);
+            saveHistory();
+        } catch(e) { alert("ロードに失敗しました。"); }
     }
 
-    function createGate(type, x, y, fixedId = null, initialValue = 0) {
-        const id = fixedId || 'c' + Date.now() + Math.random().toString(36).substr(2, 5);
-        const comp = { id, type, x, y, value: initialValue, lastClick: 0 };
-        components.push(comp);
-        
+    function renderGate(comp) {
         const el = document.createElement('div');
-        el.id = id; 
-        el.className = `gate ${['NOT','LIGHT'].includes(type) ? 'single-in' : ''}`;
-        el.style.left = x + 'px'; el.style.top = y + 'px';
+        el.id = comp.id; 
+        el.className = `gate ${['NOT','LIGHT'].includes(comp.type) ? 'single-in' : ''}`;
+        el.style.left = comp.x + 'px'; el.style.top = comp.y + 'px';
 
         const label = document.createElement('span');
         label.className = 'gate-label';
         el.appendChild(label);
 
-        if (type !== 'SWITCH') {
-            const names = (type === 'NOT' || type === 'LIGHT') ? ['in1'] : ['in1', 'in2'];
+        if (comp.type !== 'SWITCH') {
+            const names = (comp.type === 'NOT' || comp.type === 'LIGHT') ? ['in1'] : ['in1', 'in2'];
             names.forEach(n => {
                 const t = document.createElement('div'); t.className = `terminal ${n}`;
-                t.onclick = (ev) => { ev.stopPropagation(); connect(id, n, t); };
+                t.onclick = (ev) => { ev.stopPropagation(); connect(comp.id, n, t); };
                 el.appendChild(t);
             });
         }
-        if (type !== 'LIGHT') {
+        if (comp.type !== 'LIGHT') {
             const t = document.createElement('div'); t.className = `terminal out`;
-            t.onclick = (ev) => { ev.stopPropagation(); connect(id, 'out', t); };
+            t.onclick = (ev) => { ev.stopPropagation(); connect(comp.id, 'out', t); };
             el.appendChild(t);
         }
 
@@ -170,20 +205,23 @@
             if(e.target.classList.contains('terminal')) return;
             const now = Date.now();
             if (now - comp.lastClick < 300) {
-                components = components.filter(c => c.id !== id);
-                wires = wires.filter(w => w.fromId !== id && w.toId !== id);
-                el.remove();
-                updateLogic();
-                draggingObj = null;
-                return;
+                components = components.filter(c => c.id !== comp.id);
+                wires = wires.filter(w => w.fromId !== comp.id && w.toId !== comp.id);
+                el.remove(); saveHistory(); updateLogic(); draggingObj = null; return;
             }
             comp.lastClick = now;
-            if(type === 'SWITCH') { comp.value = comp.value ? 0 : 1; updateLogic(); }
+            if(comp.type === 'SWITCH') { comp.value = comp.value ? 0 : 1; saveHistory(); updateLogic(); }
             draggingObj = comp;
         };
-
         container.appendChild(el);
-        return id;
+    }
+
+    function createGate(type, x, y) {
+        const id = 'c' + Date.now() + Math.random().toString(36).substr(2, 5);
+        const comp = { id, type, x, y, value: 0, lastClick: 0 };
+        components.push(comp);
+        renderGate(comp);
+        saveHistory();
     }
 
     function updateLogic() {
@@ -224,23 +262,16 @@
             const tEl = document.getElementById(w.toId)?.querySelector('.' + w.toTerm);
             if(!fEl || !tEl) return;
             const r1 = fEl.getBoundingClientRect(); const r2 = tEl.getBoundingClientRect();
-            
-            const x1 = r1.left - cr.left + 7;
-            const y1 = r1.top - cr.top + 7;
-            const x2 = r2.left - cr.left + 7;
-            const y2 = r2.top - cr.top + 7;
-            
+            const x1 = r1.left - cr.left + 7; const y1 = r1.top - cr.top + 7;
+            const x2 = r2.left - cr.left + 7; const y2 = r2.top - cr.top + 7;
             const midX = x1 + (x2 - x1) / 2;
             const points = `${x1},${y1} ${midX},${y1} ${midX},${y2} ${x2},${y2}`;
-
-            const sourceComp = components.find(c => c.id === w.fromId);
-            const isOn = sourceComp && sourceComp.value === 1;
-            
-            const polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-            polyline.setAttribute("points", points);
-            polyline.setAttribute("class", `wire ${isOn ? "wire-on" : "wire-off"}`);
-            polyline.onclick = (e) => { e.stopPropagation(); wires.splice(index, 1); updateLogic(); };
-            svg.appendChild(polyline);
+            const src = components.find(c => c.id === w.fromId);
+            const poly = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+            poly.setAttribute("points", points);
+            poly.setAttribute("class", `wire ${src && src.value ? "wire-on" : "wire-off"}`);
+            poly.onclick = (e) => { e.stopPropagation(); wires.splice(index, 1); saveHistory(); updateLogic(); };
+            svg.appendChild(poly);
         });
     }
 
@@ -266,6 +297,7 @@
                 if(outPart.id !== inPart.id) {
                     wires = wires.filter(w => !(w.toId === inPart.id && w.toTerm === inPart.term));
                     wires.push({ fromId: outPart.id, toId: inPart.id, toTerm: inPart.term });
+                    saveHistory();
                 }
             }
             selectedTerminal.el.classList.remove('selected');
@@ -285,7 +317,10 @@
             if(el) { el.style.left = draggingObj.x + 'px'; el.style.top = draggingObj.y + 'px'; drawWires(); }
         }
     };
-    window.onmouseup = () => { draggingObj = null; };
+    window.onmouseup = () => { if(draggingObj) saveHistory(); draggingObj = null; };
+
+    // 初期化
+    saveHistory();
 </script>
 </body>
 </html>
