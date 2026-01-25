@@ -2,45 +2,39 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MIL Logic Simulator</title>
+    <title>MIL Logic Simulator - Full Fixed</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; display: flex; margin: 0; height: 100vh; overflow: hidden; background: #e0e0e0; user-select: none; }
+        body { font-family: 'Segoe UI', sans-serif; display: flex; margin: 0; height: 100vh; overflow: hidden; background: #eef2f3; user-select: none; }
         
-        /* サイドバー */
-        #sidebar { width: 220px; background: #2c3e50; color: white; padding: 15px; display: flex; flex-direction: column; gap: 8px; z-index: 10; }
+        #sidebar { width: 220px; background: #2c3e50; color: white; padding: 15px; display: flex; flex-direction: column; gap: 8px; z-index: 10; box-shadow: 2px 0 10px rgba(0,0,0,0.2); }
         .component-template { 
-            background: #34495e; border: 1px solid #5d6d7e; padding: 10px; cursor: grab; text-align: center; border-radius: 4px; font-size: 13px;
+            background: #34495e; border: 1px solid #5d6d7e; padding: 10px; cursor: grab; text-align: center; border-radius: 4px; font-size: 13px; font-weight: bold;
         }
         .component-template:hover { background: #1abc9c; }
 
-        /* キャンバス */
-        #canvas-container { flex-grow: 1; position: relative; background: #fff; background-image: radial-gradient(#ddd 1px, transparent 1px); background-size: 20px 20px; }
+        #canvas-container { flex-grow: 1; position: relative; background: #fff; background-image: radial-gradient(#d1d1d1 1px, transparent 1px); background-size: 20px 20px; }
         
-        /* ゲート共通設定 */
         .gate { 
-            position: absolute; width: 70px; height: 40px; background: white; border: 2px solid #333; 
-            display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: move; z-index: 5; font-size: 11px;
+            position: absolute; width: 80px; height: 45px; background: white; border: 2px solid #333; 
+            display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: move; z-index: 5; font-size: 12px; border-radius: 4px;
         }
-        .gate.active-on { border-color: #f1c40f; background: #fffde7; box-shadow: 0 0 10px rgba(241, 196, 15, 0.5); }
+        .gate.active-on { border-color: #f1c40f; background: #fffde7; box-shadow: 0 0 15px rgba(241, 196, 15, 0.5); }
         
-        /* 端子 (常に表示) */
         .terminal { 
-            position: absolute; width: 12px; height: 12px; background: #95a5a6; border-radius: 50%; border: 2px solid #333; 
-            cursor: pointer; z-index: 10; pointer-events: auto;
+            position: absolute; width: 14px; height: 14px; background: #bdc3c7; border-radius: 50%; border: 2px solid #333; 
+            cursor: pointer; z-index: 10; transition: 0.2s;
         }
         .terminal:hover { background: #e74c3c; transform: scale(1.3); }
-        .terminal.selected { background: #e74c3c; box-shadow: 0 0 8px #e74c3c; }
+        .terminal.selected { background: #e74c3c; box-shadow: 0 0 10px #e74c3c; border-color: white; }
         
-        /* 端子の位置 */
-        .in1 { left: -10px; top: 6px; }
-        .in2 { left: -10px; top: 22px; }
-        .out { right: -10px; top: 14px; }
+        /* 端子の配置ルール */
+        .in1 { left: -10px; top: 8px; }
+        .in2 { left: -10px; top: 24px; }
+        .out { right: -10px; top: 16px; }
         
-        /* 1入力用（NOTやライト）の位置調整 */
-        .single-in .in1 { top: 14px; }
+        /* NOTとLIGHTは入力を中央に1つ */
+        .single-in .in1 { top: 16px; }
         .single-in .in2 { display: none; }
-        /* スイッチ用 */
-        .no-in .in1, .no-in .in2 { display: none; }
 
         svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
     </style>
@@ -48,10 +42,10 @@
 <body>
 
 <div id="sidebar">
-    <h3 style="margin:0 0 10px 0">回路パーツ</h3>
-    <div class="component-template" draggable="true" data-type="SWITCH">入力スイッチ</div>
-    <div class="component-template" draggable="true" data-type="LIGHT">出力ライト</div>
-    <hr style="width:100%; border-color:#444">
+    <h3 style="margin:0 0 10px 0; font-size: 18px; border-bottom: 2px solid #1abc9c;">Logic Tool</h3>
+    <div class="component-template" draggable="true" data-type="SWITCH">SWITCH (入力)</div>
+    <div class="component-template" draggable="true" data-type="LIGHT">LIGHT (出力)</div>
+    <hr style="width:100%; border:0; border-top:1px solid #5d6d7e; margin:10px 0;">
     <div class="component-template" draggable="true" data-type="AND">AND</div>
     <div class="component-template" draggable="true" data-type="OR">OR</div>
     <div class="component-template" draggable="true" data-type="NOT">NOT</div>
@@ -59,6 +53,12 @@
     <div class="component-template" draggable="true" data-type="NOR">NOR</div>
     <div class="component-template" draggable="true" data-type="XOR">XOR</div>
     <div class="component-template" draggable="true" data-type="XNOR">XNOR</div>
+    <p style="font-size: 11px; color: #bdc3c7; line-height: 1.4;">
+        【操作方法】<br>
+        ・端子を2箇所クリックで接続<br>
+        ・SWITCHクリックでON/OFF<br>
+        ・ダブルクリックで削除
+    </p>
 </div>
 
 <div id="canvas-container">
@@ -74,16 +74,22 @@
     let selectedTerminal = null;
 
     function updateLogic() {
-        components.forEach(c => { if(c.type !== 'SWITCH') c.inputs = { in1:0, in2:0 }; });
+        // 入力値のクリア（スイッチ以外）
+        components.forEach(c => {
+            if(c.type !== 'SWITCH') c.inputs = { in1: 0, in2: 0 };
+        });
         
-        for(let i=0; i<5; i++) {
+        // 信号の伝搬計算
+        for(let i = 0; i < 10; i++) {
             wires.forEach(w => {
                 const src = components.find(c => c.id === w.fromId);
                 const tgt = components.find(c => c.id === w.toId);
                 if(src && tgt) tgt.inputs[w.toTerm] = src.value;
             });
+
             components.forEach(c => {
-                const i1 = c.inputs.in1; const i2 = c.inputs.in2;
+                const i1 = c.inputs ? c.inputs.in1 : 0;
+                const i2 = c.inputs ? c.inputs.in2 : 0;
                 switch(c.type) {
                     case 'AND':  c.value = i1 && i2 ? 1 : 0; break;
                     case 'OR':   c.value = i1 || i2 ? 1 : 0; break;
@@ -93,10 +99,11 @@
                     case 'XOR':  c.value = i1 ^ i2; break;
                     case 'XNOR': c.value = i1 === i2 ? 1 : 0; break;
                     case 'LIGHT': c.value = i1; break;
+                    case 'SWITCH': break; // クリックで維持
                 }
                 const el = document.getElementById(c.id);
                 if(el) {
-                    if(c.type === 'SWITCH' || c.type === 'LIGHT') el.innerText = `${c.type}\n(${c.value})`;
+                    el.innerText = (c.type === 'SWITCH' || c.type === 'LIGHT') ? `${c.type}\n(${c.value})` : c.type;
                     c.value ? el.classList.add('active-on') : el.classList.remove('active-on');
                 }
             });
@@ -108,13 +115,16 @@
         svg.innerHTML = '';
         const cr = container.getBoundingClientRect();
         wires.forEach(w => {
-            const fEl = document.getElementById(w.fromId).querySelector('.out');
-            const tEl = document.getElementById(w.toId).querySelector('.' + w.toTerm);
+            const fEl = document.getElementById(w.fromId)?.querySelector('.out');
+            const tEl = document.getElementById(w.toId)?.querySelector('.' + w.toTerm);
             if(!fEl || !tEl) return;
-            const r1 = fEl.getBoundingClientRect(); const r2 = tEl.getBoundingClientRect();
+            const r1 = fEl.getBoundingClientRect();
+            const r2 = tEl.getBoundingClientRect();
             const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-            line.setAttribute("x1", r1.left - cr.left + 6); line.setAttribute("y1", r1.top - cr.top + 6);
-            line.setAttribute("x2", r2.left - cr.left + 6); line.setAttribute("y2", r2.top - cr.top + 6);
+            line.setAttribute("x1", r1.left - cr.left + 7);
+            line.setAttribute("y1", r1.top - cr.top + 7);
+            line.setAttribute("x2", r2.left - cr.left + 7);
+            line.setAttribute("y2", r2.top - cr.top + 7);
             line.setAttribute("stroke", components.find(c=>c.id===w.fromId).value ? "#f39c12" : "#333");
             line.setAttribute("stroke-width", "3");
             svg.appendChild(line);
@@ -128,26 +138,30 @@
         if(!type) return;
         const id = 'c' + Date.now();
         const rect = container.getBoundingClientRect();
-        const comp = { id, type, x: e.clientX - rect.left - 35, y: e.clientY - rect.top - 20, value: 0, inputs: {in1:0, in2:0} };
+        const comp = { id, type, x: e.clientX - rect.left - 40, y: e.clientY - rect.top - 22, value: 0 };
+        if(type !== 'SWITCH') comp.inputs = { in1: 0, in2: 0 };
         components.push(comp);
         
         const el = document.createElement('div');
         el.id = id;
-        el.className = `gate ${['NOT','LIGHT'].includes(type) ? 'single-in' : ''} ${type === 'SWITCH' ? 'no-in' : ''}`;
+        // NOTとLIGHTは1入力スタイル
+        el.className = `gate ${['NOT','LIGHT'].includes(type) ? 'single-in' : ''}`;
         el.style.left = comp.x + 'px'; el.style.top = comp.y + 'px';
-        el.innerText = type;
 
-        // 入力端子の作成
-        if(type !== 'SWITCH') {
+        // 入力端子の追加 (SWITCH以外)
+        if (type !== 'SWITCH') {
             ['in1', 'in2'].forEach(tName => {
-                const t = document.createElement('div'); t.className = `terminal ${tName}`;
+                const t = document.createElement('div'); 
+                t.className = `terminal ${tName}`;
                 t.onclick = (ev) => { ev.stopPropagation(); connectTerminal(id, tName, t); };
                 el.appendChild(t);
             });
         }
-        // 出力端子の作成
-        if(type !== 'LIGHT') {
-            const out = document.createElement('div'); out.className = 'terminal out';
+
+        // 出力端子の追加 (LIGHT以外)
+        if (type !== 'LIGHT') {
+            const out = document.createElement('div'); 
+            out.className = 'terminal out';
             out.onclick = (ev) => { ev.stopPropagation(); connectTerminal(id, 'out', out); };
             el.appendChild(out);
         }
@@ -176,11 +190,13 @@
             const isOut1 = t1.term === 'out';
             const isOut2 = termName === 'out';
 
+            // 出力と入力のペアなら接続
             if (isOut1 !== isOut2 && t1.id !== compId) {
                 const outId = isOut1 ? t1.id : compId;
                 const inId = isOut1 ? compId : t1.id;
                 const inTerm = isOut1 ? termName : t1.term;
                 
+                // 同じ入力端子への既存の線を削除
                 wires = wires.filter(w => !(w.toId === inId && w.toTerm === inTerm));
                 wires.push({ fromId: outId, toId: inId, toTerm: inTerm });
             }
