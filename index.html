@@ -2,13 +2,14 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MIL Logic Simulator - Undo/Redo</title>
+    <title>MIL Logic Simulator - Comment Support</title>
     <style>
         body { font-family: sans-serif; display: flex; margin: 0; height: 100vh; overflow: hidden; background: #1a1c2c; user-select: none; }
         
         #sidebar { width: 220px; background: #25283d; color: #efefef; padding: 15px; display: flex; flex-direction: column; gap: 8px; z-index: 10; border-right: 1px solid #444; overflow-y: auto; }
         .component-template { background: #3b3f5c; border: 1px solid #5d6d7e; padding: 10px; cursor: grab; text-align: center; border-radius: 4px; font-weight: bold; font-size: 13px; color: #fff; }
         .component-template:hover { background: #5a608d; }
+        .template-comment { background: #f1c40f; color: #000; border-color: #d4ac0d; }
 
         .io-section { margin-top: 10px; padding-top: 15px; border-top: 1px solid #444; display: flex; flex-direction: column; gap: 8px; }
         .io-btn { border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; transition: 0.2s; font-size: 12px; }
@@ -31,6 +32,15 @@
         }
         .gate.active-on { border-color: #ff9800; background: #3e3b2b; box-shadow: 0 0 15px rgba(255, 152, 0, 0.3); }
         .gate-label { pointer-events: none; font-size: 11px; white-space: pre; }
+
+        /* コメント用スタイル */
+        .comment-node {
+            position: absolute; min-width: 100px; padding: 8px; background: rgba(241, 196, 15, 0.15); 
+            border: 1px dashed #f1c40f; color: #f1c40f; cursor: move; z-index: 4; font-size: 13px; border-radius: 4px;
+        }
+        .comment-node input {
+            background: transparent; border: none; color: inherit; font-family: inherit; font-size: inherit; width: 100%; outline: none;
+        }
 
         .terminal { position: absolute; width: 14px; height: 14px; background: #555; border-radius: 50%; border: 2px solid #1a1c2c; cursor: pointer; z-index: 10; }
         .terminal:hover { background: #ff5722; transform: scale(1.2); }
@@ -55,6 +65,7 @@
     <h3 style="margin:0 0 10px 0">回路パーツ</h3>
     <div class="component-template" draggable="true" data-type="SWITCH">SWITCH</div>
     <div class="component-template" draggable="true" data-type="LIGHT">LIGHT</div>
+    <div class="component-template template-comment" draggable="true" data-type="COMMENT">COMMENT</div>
     <hr style="width:100%; border:0; border-top:1px solid #444">
     <div class="component-template" draggable="true" data-type="AND">AND</div>
     <div class="component-template" draggable="true" data-type="OR">OR</div>
@@ -69,7 +80,7 @@
             <button id="undo-btn" class="io-btn btn-undo" onclick="undo()" style="flex:1">UNDO</button>
             <button id="redo-btn" class="io-btn btn-redo" onclick="redo()" style="flex:1">REDO</button>
         </div>
-        <textarea id="save-code-area" placeholder="Code area..."></textarea>
+        <textarea id="save-code-area" placeholder="ここにコードが表示されます..."></textarea>
         <button class="io-btn btn-save" onclick="exportCircuit()">SAVE CODE</button>
         <button class="io-btn btn-load" onclick="importCircuit()">LOAD CODE</button>
         <button class="io-btn btn-export" onclick="captureCanvas()">CAPTURE IMAGE</button>
@@ -93,14 +104,10 @@
 
     function saveHistory() {
         const state = JSON.stringify({
-            components: components.map(c => ({...c})),
+            components: components.map(c => ({...c, lastClick: 0})),
             wires: wires.map(w => ({...w}))
         });
-        
-        // 同じ状態なら保存しない
         if (historyIndex >= 0 && history[historyIndex] === state) return;
-
-        // redo以降を削除して新しい状態を追加
         history = history.slice(0, historyIndex + 1);
         history.push(state);
         if (history.length > 50) history.shift(); else historyIndex++;
@@ -124,8 +131,8 @@
     function applyState(state) {
         components = state.components.map(c => ({...c}));
         wires = state.wires.map(w => ({...w}));
-        container.querySelectorAll('.gate').forEach(el => el.remove());
-        components.forEach(c => renderGate(c));
+        container.querySelectorAll('.gate, .comment-node').forEach(el => el.remove());
+        components.forEach(c => renderComponent(c));
         updateLogic();
         updateUndoButtons();
     }
@@ -135,7 +142,6 @@
         document.getElementById('redo-btn').disabled = historyIndex >= history.length - 1;
     }
 
-    // ショートカットキー
     window.addEventListener('keydown', (e) => {
         if (e.ctrlKey || e.metaKey) {
             if (e.key === 'z') { e.preventDefault(); undo(); }
@@ -143,38 +149,38 @@
         }
     });
 
-    // --- 各種機能 ---
-    async function captureCanvas() {
-        const btn = document.querySelector('.btn-export');
-        btn.innerText = "Processing...";
-        const canvas = await html2canvas(container, { backgroundColor: '#1a1c2c', scale: 2, logging: false });
-        const link = document.createElement('a');
-        link.download = 'logic-circuit.png'; link.href = canvas.toDataURL('image/png'); link.click();
-        btn.innerText = "CAPTURE IMAGE";
-    }
-
-    function resetCanvas() {
-        if (confirm("回路をすべて消去しますか？")) {
-            components = []; wires = [];
-            container.querySelectorAll('.gate').forEach(el => el.remove());
-            saveHistory();
-            updateLogic();
+    // --- コンポーネント描画 ---
+    function renderComponent(comp) {
+        if (comp.type === 'COMMENT') {
+            renderComment(comp);
+        } else {
+            renderGate(comp);
         }
     }
 
-    function exportCircuit() {
-        const data = { components: components.map(c => ({ id: c.id, type: c.type, x: c.x, y: c.y, value: c.value })), wires: wires };
-        document.getElementById('save-code-area').value = btoa(JSON.stringify(data));
-    }
+    function renderComment(comp) {
+        const el = document.createElement('div');
+        el.id = comp.id;
+        el.className = 'comment-node';
+        el.style.left = comp.x + 'px'; el.style.top = comp.y + 'px';
 
-    function importCircuit() {
-        const code = document.getElementById('save-code-area').value.trim();
-        if(!code) return;
-        try {
-            const data = JSON.parse(atob(code));
-            applyState(data);
-            saveHistory();
-        } catch(e) { alert("ロードに失敗しました。"); }
+        const input = document.createElement('input');
+        input.value = comp.text || "メモを入力...";
+        input.onchange = (e) => { comp.text = e.target.value; saveHistory(); };
+        input.onmousedown = (e) => e.stopPropagation(); // ドラッグ防止
+        
+        el.onmousedown = (e) => {
+            const now = Date.now();
+            if (now - comp.lastClick < 300) {
+                components = components.filter(c => c.id !== comp.id);
+                el.remove(); saveHistory(); draggingObj = null; return;
+            }
+            comp.lastClick = now;
+            draggingObj = comp;
+        };
+
+        el.appendChild(input);
+        container.appendChild(el);
     }
 
     function renderGate(comp) {
@@ -216,16 +222,18 @@
         container.appendChild(el);
     }
 
-    function createGate(type, x, y) {
+    function createComponent(type, x, y) {
         const id = 'c' + Date.now() + Math.random().toString(36).substr(2, 5);
-        const comp = { id, type, x, y, value: 0, lastClick: 0 };
+        const comp = { id, type, x, y, value: 0, lastClick: 0, text: type === 'COMMENT' ? "メモを入力..." : "" };
         components.push(comp);
-        renderGate(comp);
+        renderComponent(comp);
         saveHistory();
+        if (type !== 'COMMENT') updateLogic();
     }
 
+    // --- ロジック・描画更新 ---
     function updateLogic() {
-        components.forEach(c => { if(c.type !== 'SWITCH') c.inputs = { in1: 0, in2: 0 }; });
+        components.forEach(c => { if(!['SWITCH', 'COMMENT'].includes(c.type)) c.inputs = { in1: 0, in2: 0 }; });
         for(let i = 0; i < 10; i++) {
             wires.forEach(w => {
                 const src = components.find(c => c.id === w.fromId);
@@ -233,6 +241,7 @@
                 if(src && tgt) tgt.inputs[w.toTerm] = src.value;
             });
             components.forEach(c => {
+                if(c.type === 'COMMENT') return;
                 const i1 = c.inputs?.in1 || 0; const i2 = c.inputs?.in2 || 0;
                 if(c.type === 'AND') c.value = i1 && i2 ? 1 : 0;
                 else if(c.type === 'OR') c.value = i1 || i2 ? 1 : 0;
@@ -246,7 +255,7 @@
                 const el = document.getElementById(c.id);
                 if(el) {
                     const label = el.querySelector('.gate-label');
-                    label.innerText = (c.type==='SWITCH'||c.type==='LIGHT') ? `${c.type}\n(${c.value})` : c.type;
+                    if(label) label.innerText = (c.type==='SWITCH'||c.type==='LIGHT') ? `${c.type}\n(${c.value})` : c.type;
                     c.value ? el.classList.add('active-on') : el.classList.remove('active-on');
                 }
             });
@@ -275,14 +284,46 @@
         });
     }
 
+    // --- イベント ---
+    async function captureCanvas() {
+        const btn = document.querySelector('.btn-export');
+        btn.innerText = "処理中...";
+        const canvas = await html2canvas(container, { backgroundColor: '#1a1c2c', scale: 2, logging: false });
+        const link = document.createElement('a');
+        link.download = 'logic-circuit.png'; link.href = canvas.toDataURL('image/png'); link.click();
+        btn.innerText = "CAPTURE IMAGE";
+    }
+
+    function resetCanvas() {
+        if (confirm("回路をすべて消去しますか？")) {
+            components = []; wires = [];
+            container.querySelectorAll('.gate, .comment-node').forEach(el => el.remove());
+            saveHistory(); updateLogic();
+        }
+    }
+
+    function exportCircuit() {
+        const data = { components: components.map(c => ({ id: c.id, type: c.type, x: c.x, y: c.y, value: c.value, text: c.text })), wires: wires };
+        document.getElementById('save-code-area').value = btoa(JSON.stringify(data));
+    }
+
+    function importCircuit() {
+        const code = document.getElementById('save-code-area').value.trim();
+        if(!code) return;
+        try {
+            const data = JSON.parse(atob(code));
+            applyState(data);
+            saveHistory();
+        } catch(e) { alert("ロードに失敗しました。"); }
+    }
+
     container.ondragover = e => e.preventDefault();
     container.ondrop = e => {
         e.preventDefault();
         const type = e.dataTransfer.getData('type');
         if(!type) return;
         const rect = container.getBoundingClientRect();
-        createGate(type, e.clientX - rect.left - 40, e.clientY - rect.top - 25);
-        updateLogic();
+        createComponent(type, e.clientX - rect.left - 40, e.clientY - rect.top - 25);
     };
 
     function connect(compId, termName, el) {
@@ -319,7 +360,6 @@
     };
     window.onmouseup = () => { if(draggingObj) saveHistory(); draggingObj = null; };
 
-    // 初期化
     saveHistory();
 </script>
 </body>
