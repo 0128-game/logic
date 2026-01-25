@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Logic Circuit Sim - Terminal Fix</title>
+    <title>MIL Logic Simulator - Improved Delete</title>
     <style>
         body { font-family: sans-serif; display: flex; margin: 0; height: 100vh; overflow: hidden; background: #eef2f3; user-select: none; }
         #sidebar { width: 200px; background: #2c3e50; color: white; padding: 15px; display: flex; flex-direction: column; gap: 8px; z-index: 10; }
@@ -10,7 +10,6 @@
         .component-template:hover { background: #1abc9c; }
         #canvas-container { flex-grow: 1; position: relative; background: #fff; background-image: radial-gradient(#d1d1d1 1px, transparent 1px); background-size: 20px 20px; }
         
-        /* ゲート本体 */
         .gate { 
             position: absolute; width: 80px; height: 50px; background: white; border: 2px solid #333; 
             display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: move; z-index: 5; border-radius: 4px; text-align: center;
@@ -18,7 +17,6 @@
         .gate.active-on { border-color: #f1c40f; background: #fffde7; box-shadow: 0 0 15px rgba(241, 196, 15, 0.5); }
         .gate-label { pointer-events: none; font-size: 11px; white-space: pre; }
 
-        /* 端子 */
         .terminal { 
             position: absolute; width: 14px; height: 14px; background: #bdc3c7; border-radius: 50%; border: 2px solid #333; 
             cursor: pointer; z-index: 10;
@@ -29,7 +27,6 @@
         .in1 { left: -10px; top: 8px; }
         .in2 { left: -10px; top: 28px; }
         .out { right: -10px; top: 18px; }
-        /* 1入力用(NOT, LIGHT)の中央寄せ */
         .single-in .in1 { top: 18px; }
         
         svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
@@ -49,6 +46,7 @@
     <div class="component-template" draggable="true" data-type="NOR">NOR</div>
     <div class="component-template" draggable="true" data-type="XOR">XOR</div>
     <div class="component-template" draggable="true" data-type="XNOR">XNOR</div>
+    <p style="font-size: 10px; color: #ccc; margin-top:20px;">※1秒以内に2回クリックで削除</p>
 </div>
 
 <div id="canvas-container"><svg id="connections-svg"></svg></div>
@@ -115,7 +113,7 @@
         if(!type) return;
         const id = 'c' + Date.now();
         const rect = container.getBoundingClientRect();
-        const comp = { id, type, x: e.clientX - rect.left - 40, y: e.clientY - rect.top - 25, value: 0 };
+        const comp = { id, type, x: e.clientX - rect.left - 40, y: e.clientY - rect.top - 25, value: 0, lastClick: 0 };
         components.push(comp);
         
         const el = document.createElement('div');
@@ -123,12 +121,10 @@
         el.className = `gate ${['NOT','LIGHT'].includes(type) ? 'single-in' : ''}`;
         el.style.left = comp.x + 'px'; el.style.top = comp.y + 'px';
 
-        // ラベル用要素 (innerTextで上書きされないように分離)
         const label = document.createElement('span');
         label.className = 'gate-label';
         el.appendChild(label);
 
-        // 入力端子
         if (type !== 'SWITCH') {
             const names = (type === 'NOT' || type === 'LIGHT') ? ['in1'] : ['in1', 'in2'];
             names.forEach(n => {
@@ -137,24 +133,35 @@
                 el.appendChild(t);
             });
         }
-        // 出力端子
         if (type !== 'LIGHT') {
             const t = document.createElement('div'); t.className = `terminal out`;
             t.onclick = (ev) => { ev.stopPropagation(); connect(id, 'out', t); };
             el.appendChild(t);
         }
 
+        // クリック判定とドラッグ開始
         el.onmousedown = (e) => {
-            if(!e.target.classList.contains('terminal')) {
-                if(type === 'SWITCH') { comp.value = comp.value ? 0 : 1; updateLogic(); }
-                draggingObj = comp;
+            if(e.target.classList.contains('terminal')) return;
+            
+            const now = Date.now();
+            // --- 削除判定: 前回のクリックから1秒以内か ---
+            if (now - comp.lastClick < 1000) {
+                components = components.filter(c => c.id !== id);
+                wires = wires.filter(w => w.fromId !== id && w.toId !== id);
+                el.remove();
+                updateLogic();
+                draggingObj = null;
+                return;
             }
+            comp.lastClick = now;
+
+            if(type === 'SWITCH') { 
+                comp.value = comp.value ? 0 : 1; 
+                updateLogic(); 
+            }
+            draggingObj = comp;
         };
-        el.ondblclick = () => {
-            components = components.filter(c => c.id !== id);
-            wires = wires.filter(w => w.fromId !== id && w.toId !== id);
-            el.remove(); updateLogic();
-        };
+
         container.appendChild(el);
         updateLogic();
     };
@@ -188,8 +195,10 @@
         if(draggingObj) {
             draggingObj.x += e.movementX; draggingObj.y += e.movementY;
             const el = document.getElementById(draggingObj.id);
-            el.style.left = draggingObj.x + 'px'; el.style.top = draggingObj.y + 'px';
-            drawWires();
+            if(el) {
+                el.style.left = draggingObj.x + 'px'; el.style.top = draggingObj.y + 'px';
+                drawWires();
+            }
         }
     };
     window.onmouseup = () => { draggingObj = null; };
