@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MIL Logic Simulator - Save & Load</title>
+    <title>MIL Logic Simulator - Export & Align</title>
     <style>
         body { font-family: sans-serif; display: flex; margin: 0; height: 100vh; overflow: hidden; background: #1a1c2c; user-select: none; }
         
@@ -10,19 +10,25 @@
         .component-template { background: #3b3f5c; border: 1px solid #5d6d7e; padding: 10px; cursor: grab; text-align: center; border-radius: 4px; font-weight: bold; font-size: 13px; color: #fff; }
         .component-template:hover { background: #5a608d; }
 
-        /* セーブ・ロード UI */
-        .io-section { margin-top: 15px; padding-top: 15px; border-top: 1px solid #444; display: flex; flex-direction: column; gap: 5px; }
-        .io-btn { background: #1abc9c; color: white; border: none; padding: 8px; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        .io-btn:hover { background: #16a085; }
-        .io-btn.save { background: #3498db; }
-        #save-code-area { background: #1a1c2c; border: 1px solid #444; color: #00ffcc; font-family: monospace; font-size: 10px; padding: 5px; width: 100%; box-sizing: border-box; resize: vertical; height: 60px; }
+        .io-section { margin-top: 10px; padding-top: 15px; border-top: 1px solid #444; display: flex; flex-direction: column; gap: 8px; }
+        .io-btn { border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; transition: 0.2s; font-size: 12px; }
+        .btn-save { background: #3498db; }
+        .btn-load { background: #1abc9c; }
+        .btn-export { background: #9b59b6; } /* 画像出力用 */
+        .btn-align { background: #f39c12; }  /* 整列用 */
+        .btn-reset { background: #e74c3c; margin-top: 10px; }
+        .io-btn:hover { opacity: 0.8; transform: translateY(-1px); }
+
+        #save-code-area { background: #1a1c2c; border: 1px solid #444; color: #00ffcc; font-family: monospace; font-size: 10px; padding: 8px; width: 100%; box-sizing: border-box; resize: none; height: 60px; border-radius: 4px; }
 
         #canvas-container { flex-grow: 1; position: relative; background: #1a1c2c; background-image: radial-gradient(#333 1px, transparent 1px); background-size: 25px 25px; }
         
         .gate { 
             position: absolute; width: 80px; height: 50px; background: #2d314d; border: 2px solid #555; 
             display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: move; z-index: 5; border-radius: 4px; text-align: center; color: #fff;
+            transition: left 0.3s, top 0.3s; /* 整列時にアニメーションさせる */
         }
+        .gate.dragging { transition: none; } /* ドラッグ中はアニメーションをオフ */
         .gate.active-on { border-color: #ff9800; background: #3e3b2b; box-shadow: 0 0 15px rgba(255, 152, 0, 0.3); }
         .gate-label { pointer-events: none; font-size: 11px; white-space: pre; }
 
@@ -41,6 +47,7 @@
         .wire-on { stroke: #ff9800; stroke-width: 4; filter: drop-shadow(0 0 5px #ff9800); }
         .wire-off { stroke: #444; stroke-width: 3; }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
 
@@ -58,11 +65,13 @@
     <div class="component-template" draggable="true" data-type="XNOR">XNOR</div>
 
     <div class="io-section">
-        <textarea id="save-code-area" placeholder="ここにセーブコードが表示されます"></textarea>
-        <button class="io-btn save" onclick="exportCircuit()">セーブコード作成</button>
-        <button class="io-btn" onclick="importCircuit()">ロード実行</button>
+        <textarea id="save-code-area" placeholder="Save/Load code here..."></textarea>
+        <button class="io-btn btn-save" onclick="exportCircuit()">SAVE CODE</button>
+        <button class="io-btn btn-load" onclick="importCircuit()">LOAD CODE</button>
+        <button class="io-btn btn-align" onclick="alignGates()">AUTO ALIGN (整列)</button>
+        <button class="io-btn btn-export" onclick="captureCanvas()">CAPTURE IMAGE (画像)</button>
+        <button class="io-btn btn-reset" onclick="resetCanvas()">ALL RESET</button>
     </div>
-    <p style="font-size: 10px; color: #888; margin-top:10px;">線クリックで削除 / 300ms以内クリックで本体削除</p>
 </div>
 
 <div id="canvas-container"><svg id="connections-svg"></svg></div>
@@ -75,34 +84,74 @@
     let draggingObj = null;
     let selectedTerminal = null;
 
-    // --- セーブ機能 ---
-    function exportCircuit() {
-        const data = {
-            components: components.map(c => ({ id: c.id, type: c.type, x: c.x, y: c.y, value: c.value })),
-            wires: wires
-        };
-        const code = btoa(JSON.stringify(data)); // Base64エンコード
-        document.getElementById('save-code-area').value = code;
+    // --- 自動整列機能 ---
+    function alignGates() {
+        const gridSize = 100;
+        const padding = 50;
+        
+        // SWITCH、ゲート、LIGHTの順に並べるなど工夫も可能ですが、
+        // 今回は現在の位置に近いグリッドへスナップさせます
+        components.forEach(c => {
+            c.x = Math.round(c.x / gridSize) * gridSize + 10;
+            c.y = Math.round(c.y / gridSize) * gridSize + 25;
+            const el = document.getElementById(c.id);
+            if(el) {
+                el.style.left = c.x + 'px';
+                el.style.top = c.y + 'px';
+            }
+        });
+        
+        // アニメーションが終わる頃に線を再描画
+        let timer = setInterval(drawWires, 16);
+        setTimeout(() => clearInterval(timer), 400);
     }
 
-    // --- ロード機能 ---
+    // --- 画像書き出し機能 ---
+    async function captureCanvas() {
+        const btn = document.querySelector('.btn-export');
+        btn.innerText = "Processing...";
+        
+        // html2canvasでキャンバス領域を撮影
+        const canvas = await html2canvas(container, {
+            backgroundColor: '#1a1c2c',
+            scale: 2, // 高解像度
+            logging: false,
+            useCORS: true
+        });
+        
+        const link = document.createElement('a');
+        link.download = 'logic-circuit.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        
+        btn.innerText = "CAPTURE IMAGE (画像)";
+    }
+
+    function resetCanvas() {
+        if (confirm("回路をすべて消去しますか？")) {
+            components = []; wires = [];
+            container.querySelectorAll('.gate').forEach(el => el.remove());
+            document.getElementById('save-code-area').value = "";
+            updateLogic();
+        }
+    }
+
+    function exportCircuit() {
+        const data = { components: components.map(c => ({ id: c.id, type: c.type, x: c.x, y: c.y, value: c.value })), wires: wires };
+        document.getElementById('save-code-area').value = btoa(JSON.stringify(data));
+    }
+
     function importCircuit() {
         const code = document.getElementById('save-code-area').value.trim();
         if(!code) return;
         try {
             const data = JSON.parse(atob(code));
-            // クリア
-            components = [];
-            wires = [];
+            components = []; wires = [];
             container.querySelectorAll('.gate').forEach(el => el.remove());
-
-            // 復元
             data.components.forEach(c => createGate(c.type, c.x, c.y, c.id, c.value));
             wires = data.wires;
             updateLogic();
-        } catch(e) {
-            alert("無効なセーブコードです。");
-        }
+        } catch(e) { alert("ロードに失敗しました。"); }
     }
 
     function createGate(type, x, y, fixedId = null, initialValue = 0) {
@@ -139,14 +188,12 @@
             if (now - comp.lastClick < 300) {
                 components = components.filter(c => c.id !== id);
                 wires = wires.filter(w => w.fromId !== id && w.toId !== id);
-                el.remove();
-                updateLogic();
-                draggingObj = null;
-                return;
+                el.remove(); updateLogic(); draggingObj = null; return;
             }
             comp.lastClick = now;
             if(type === 'SWITCH') { comp.value = comp.value ? 0 : 1; updateLogic(); }
             draggingObj = comp;
+            el.classList.add('dragging');
         };
 
         container.appendChild(el);
@@ -193,12 +240,9 @@
             const r1 = fEl.getBoundingClientRect(); const r2 = tEl.getBoundingClientRect();
             const sourceComp = components.find(c => c.id === w.fromId);
             const isOn = sourceComp && sourceComp.value === 1;
-
             const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-            line.setAttribute("x1", r1.left - cr.left + 7);
-            line.setAttribute("y1", r1.top - cr.top + 7);
-            line.setAttribute("x2", r2.left - cr.left + 7);
-            line.setAttribute("y2", r2.top - cr.top + 7);
+            line.setAttribute("x1", r1.left - cr.left + 7); line.setAttribute("y1", r1.top - cr.top + 7);
+            line.setAttribute("x2", r2.left - cr.left + 7); line.setAttribute("y2", r2.top - cr.top + 7);
             line.setAttribute("class", `wire ${isOn ? "wire-on" : "wire-off"}`);
             line.onclick = (e) => { e.stopPropagation(); wires.splice(index, 1); updateLogic(); };
             svg.appendChild(line);
@@ -246,7 +290,7 @@
             if(el) { el.style.left = draggingObj.x + 'px'; el.style.top = draggingObj.y + 'px'; drawWires(); }
         }
     };
-    window.onmouseup = () => { draggingObj = null; };
+    window.onmouseup = () => { if(draggingObj) document.getElementById(draggingObj.id).classList.remove('dragging'); draggingObj = null; };
 </script>
 </body>
 </html>
