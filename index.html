@@ -130,16 +130,12 @@
     }
 
     function applyState(state) {
-        // Deep copy components and wires to maintain text field and other properties
         components = state.components.map(c => ({ ...c }));
         wires = state.wires.map(w => ({ ...w }));
-
-        // Clear existing elements
+        // 既存の要素をクリア
         container.querySelectorAll('.gate, .comment-node').forEach(el => el.remove());
-
-        // Re-render each component based on loaded state
+        // 再描画
         components.forEach(c => renderComponent(c));
-        
         updateLogic();
         updateUndoButtons();
     }
@@ -176,7 +172,7 @@
         
         const autoResize = () => {
             textarea.style.height = 'auto';
-            textarea.style.height = textarea.scrollHeight + 'px';
+            textarea.style.height = (textarea.scrollHeight) + 'px';
         };
 
         textarea.oninput = (e) => { 
@@ -198,8 +194,7 @@
 
         el.appendChild(textarea);
         container.appendChild(el);
-        
-        setTimeout(autoResize, 0);
+        requestAnimationFrame(() => autoResize());
     }
 
     function renderGate(comp) {
@@ -313,10 +308,25 @@
 
     function resetCanvas() {
         if (confirm("回路をすべて消去しますか？")) {
-            components = []; wires = [];
+            components = []; 
+            wires = [];
+            // 画面上の全要素を削除
             container.querySelectorAll('.gate, .comment-node').forEach(el => el.remove());
-            saveHistory(); updateLogic();
+            svg.innerHTML = '';
+            // 履歴に保存し、ロジックを更新
+            saveHistory(); 
+            updateLogic();
         }
+    }
+
+    // 日本語（Unicode）対応の Base64 エンコード
+    function utoa(str) {
+        return btoa(unescape(encodeURIComponent(str)));
+    }
+
+    // 日本語（Unicode）対応の Base64 デコード
+    function atou(str) {
+        return decodeURIComponent(escape(atob(str)));
     }
 
     function exportCircuit() {
@@ -326,17 +336,22 @@
             })), 
             wires: wires 
         };
-        document.getElementById('save-code-area').value = btoa(JSON.stringify(data));
+        const jsonStr = JSON.stringify(data);
+        document.getElementById('save-code-area').value = utoa(jsonStr);
     }
 
     function importCircuit() {
         const code = document.getElementById('save-code-area').value.trim();
         if(!code) return;
         try {
-            const data = JSON.parse(atob(code));
+            const jsonStr = atou(code);
+            const data = JSON.parse(jsonStr);
             applyState(data);
             saveHistory();
-        } catch(e) { alert("ロードに失敗しました。"); }
+        } catch(e) { 
+            console.error(e);
+            alert("ロードに失敗しました。データが正しくないか、破損しています。"); 
+        }
     }
 
     container.ondragover = e => e.preventDefault();
@@ -382,6 +397,7 @@
     };
     window.onmouseup = () => { if(draggingObj) saveHistory(); draggingObj = null; };
 
+    // 初期状態を保存
     saveHistory();
 </script>
 </body>
