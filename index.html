@@ -2,112 +2,224 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MIL Logic Simulator - Comment Support</title>
+    <title>MIL Logic Simulator - Full Gates</title>
     <style>
         body { font-family: sans-serif; display: flex; margin: 0; height: 100vh; overflow: hidden; background: #1a1c2c; user-select: none; }
         
-        #sidebar { width: 220px; background: #25283d; color: #efefef; padding: 15px; display: flex; flex-direction: column; gap: 8px; z-index: 10; border-right: 1px solid #444; overflow-y: auto; }
-        .component-template { background: #3b3f5c; border: 1px solid #5d6d7e; padding: 10px; cursor: grab; text-align: center; border-radius: 4px; font-weight: bold; font-size: 13px; color: #fff; }
-        .component-template:hover { background: #5a608d; }
-        .template-comment { background: #f1c40f; color: #000; border-color: #d4ac0d; }
-
-        .io-section { margin-top: 10px; padding-top: 15px; border-top: 1px solid #444; display: flex; flex-direction: column; gap: 8px; }
-        .io-btn { border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; transition: 0.2s; font-size: 12px; }
-        .btn-undo { background: #7f8c8d; }
-        .btn-redo { background: #95a5a6; }
-        .btn-save { background: #3498db; }
-        .btn-load { background: #1abc9c; }
-        .btn-export { background: #9b59b6; } 
-        .btn-reset { background: #e74c3c; margin-top: 10px; }
-        .io-btn:hover { opacity: 0.8; transform: translateY(-1px); }
-        .io-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-
-        #save-code-area { background: #1a1c2c; border: 1px solid #444; color: #00ffcc; font-family: monospace; font-size: 10px; padding: 8px; width: 100%; box-sizing: border-box; resize: none; height: 60px; border-radius: 4px; }
-
-        #canvas-container { flex-grow: 1; position: relative; background: #1a1c2c; background-image: radial-gradient(#333 1px, transparent 1px); background-size: 25px 25px; }
-        
-        .gate { 
-            position: absolute; width: 80px; height: 50px; background: #2d314d; border: 2px solid #555; 
-            display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: move; z-index: 5; border-radius: 4px; text-align: center; color: #fff;
+        /* サイドバー */
+        #sidebar { 
+            width: 220px; 
+            min-width: 220px;
+            background: #25283d; 
+            color: #efefef; 
+            padding: 15px; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 8px; 
+            border-right: 1px solid #444; 
+            overflow-y: auto; 
+            position: relative;
+            z-index: 100; 
         }
-        .gate.active-on { border-color: #ff9800; background: #3e3b2b; box-shadow: 0 0 15px rgba(255, 152, 0, 0.3); }
+        
+        #sidebar::after {
+            content: "DROP HERE TO DELETE";
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(231, 76, 60, 0.9);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-size: 16px; color: white;
+            opacity: 0; pointer-events: none; transition: 0.2s;
+            z-index: 2;
+        }
+        #sidebar.drag-over-delete::after { opacity: 1; }
+
+        /* キャンバス領域 */
+        #canvas-viewport {
+            flex-grow: 1;
+            position: relative;
+            overflow: hidden; 
+            background: #1a1c2c;
+            cursor: grab; /* 背景は掴めるカーソル */
+        }
+        #canvas-viewport:active {
+            cursor: grabbing;
+        }
+
+        /* ズーム・移動する本体 */
+        #canvas-container { 
+            position: absolute;
+            top: 0; left: 0;
+            width: 5000px; 
+            height: 5000px;
+            transform-origin: 0 0;
+            background-image: radial-gradient(#333 1px, transparent 1px); 
+            background-size: 25px 25px; 
+            z-index: 10; 
+        }
+
+        /* パーツの基本スタイル */
+        .gate, .comment-node { 
+            position: absolute; 
+            z-index: 15; 
+            cursor: move;
+            color: #fff;
+            outline: none !important; 
+            border: 2px solid #555;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .gate.dragging, .comment-node.dragging {
+            z-index: 1000 !important;
+            opacity: 0.8;
+        }
+
+        .gate { width: 80px; height: 50px; background: #2d314d; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 4px; text-align: center; }
+        
+        .gate.active-on { 
+            border-color: #ff9800 !important; 
+            background: #4a3b2b !important; 
+            box-shadow: 0 0 20px rgba(255, 152, 0, 0.6) !important; 
+        }
+        
         .gate-label { pointer-events: none; font-size: 11px; white-space: pre; }
 
-        /* コメント用スタイル */
-        .comment-node {
-            position: absolute; min-width: 120px; padding: 8px; background: rgba(241, 196, 15, 0.15); 
-            border: 1px dashed #f1c40f; color: #f1c40f; cursor: move; z-index: 4; font-size: 13px; border-radius: 4px;
-        }
-        .comment-node textarea {
-            background: transparent; border: none; color: inherit; font-family: inherit; font-size: inherit; width: 100%; outline: none;
-            resize: none; overflow: hidden; display: block; padding: 0; line-height: 1.4;
-        }
+        .comment-node { min-width: 120px; padding: 8px; background: rgba(241, 196, 15, 0.15); border: 1px dashed #f1c40f; color: #f1c40f; font-size: 13px; border-radius: 4px; }
 
-        .terminal { position: absolute; width: 14px; height: 14px; background: #555; border-radius: 50%; border: 2px solid #1a1c2c; cursor: pointer; z-index: 10; }
-        .terminal:hover { background: #ff5722; transform: scale(1.2); }
-        .terminal.selected { background: #ff5722; box-shadow: 0 0 10px #ff5722; border-color: white; }
-        
-        .in1 { left: -10px; top: 8px; }
-        .in2 { left: -10px; top: 28px; }
-        .out { right: -10px; top: 18px; }
-        .single-in .in1 { top: 18px; }
-        
-        svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
-        .wire { cursor: pointer; pointer-events: stroke; fill: none; }
-        .wire:hover { stroke-width: 8px !important; stroke: #e74c3c !important; }
-        .wire-on { stroke: #ff9800; stroke-width: 4; filter: drop-shadow(0 0 5px #ff9800); }
-        .wire-off { stroke: #444; stroke-width: 3; }
+        .terminal { position: absolute; width: 14px; height: 14px; background: #555; border-radius: 50%; border: 2px solid #1a1c2c; cursor: pointer; z-index: 20; }
+        svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+
+        /* UI要素 */
+        .component-template { background: #3b3f5c; border: 1px solid #5d6d7e; padding: 8px; cursor: grab; text-align: center; border-radius: 4px; font-weight: bold; font-size: 12px; color: #fff; }
+        .io-section { margin-top: 10px; padding-top: 15px; border-top: 1px solid #444; display: flex; flex-direction: column; gap: 8px; }
+        .io-btn { border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; transition: 0.2s; font-size: 12px; }
+        .btn-undo { background: #7f8c8d; } .btn-redo { background: #95a5a6; } .btn-save { background: #3498db; } .btn-load { background: #1abc9c; }
+        .btn-reset { background: #e74c3c; margin-top: 10px; }
+        #save-code-area { background: #1a1c2c; border: 1px solid #444; color: #00ffcc; font-family: monospace; font-size: 10px; padding: 8px; width: 100%; box-sizing: border-box; resize: none; height: 60px; border-radius: 4px; }
+
+        /* ズームコントローラー */
+        #zoom-controls {
+            position: absolute; bottom: 20px; right: 20px;
+            background: rgba(37, 40, 61, 0.8);
+            padding: 10px; border-radius: 8px; border: 1px solid #444;
+            display: flex; align-items: center; gap: 10px; color: white; z-index: 200;
+        }
+        .zoom-btn { background: #444; border: none; color: white; width: 30px; height: 30px; border-radius: 4px; cursor: pointer; font-size: 18px; line-height: 1; }
+        .zoom-btn:hover { background: #666; }
     </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
 
 <div id="sidebar">
-    <h3 style="margin:0 0 10px 0">回路パーツ</h3>
-    <div class="component-template" draggable="true" data-type="SWITCH">SWITCH</div>
-    <div class="component-template" draggable="true" data-type="LIGHT">LIGHT</div>
-    <div class="component-template template-comment" draggable="true" data-type="COMMENT">COMMENT</div>
+    <h3 style="margin:0 0 5px 0; font-size: 14px;">ドラッグで追加</h3>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+        <div class="component-template" draggable="true" data-type="SWITCH">SWITCH</div>
+        <div class="component-template" draggable="true" data-type="LIGHT">LIGHT</div>
+    </div>
+    <div class="component-template" draggable="true" data-type="COMMENT" style="background:#f1c40f; color:#000;">COMMENT</div>
     <hr style="width:100%; border:0; border-top:1px solid #444">
-    <div class="component-template" draggable="true" data-type="AND">AND</div>
-    <div class="component-template" draggable="true" data-type="OR">OR</div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+        <div class="component-template" draggable="true" data-type="AND">AND</div>
+        <div class="component-template" draggable="true" data-type="OR">OR</div>
+        <div class="component-template" draggable="true" data-type="NAND">NAND</div>
+        <div class="component-template" draggable="true" data-type="NOR">NOR</div>
+        <div class="component-template" draggable="true" data-type="XOR">XOR</div>
+        <div class="component-template" draggable="true" data-type="XNOR">XNOR</div>
+    </div>
     <div class="component-template" draggable="true" data-type="NOT">NOT</div>
-    <div class="component-template" draggable="true" data-type="NAND">NAND</div>
-    <div class="component-template" draggable="true" data-type="NOR">NOR</div>
-    <div class="component-template" draggable="true" data-type="XOR">XOR</div>
-    <div class="component-template" draggable="true" data-type="XNOR">XNOR</div>
 
     <div class="io-section">
         <div style="display: flex; gap: 4px;">
             <button id="undo-btn" class="io-btn btn-undo" onclick="undo()" style="flex:1">UNDO</button>
             <button id="redo-btn" class="io-btn btn-redo" onclick="redo()" style="flex:1">REDO</button>
         </div>
-        <textarea id="save-code-area" placeholder="ここにコードが表示されます..."></textarea>
+        <textarea id="save-code-area" placeholder="SAVE CODE..."></textarea>
         <button class="io-btn btn-save" onclick="exportCircuit()">SAVE CODE</button>
         <button class="io-btn btn-load" onclick="importCircuit()">LOAD CODE</button>
-        <button class="io-btn btn-export" onclick="captureCanvas()">CAPTURE IMAGE</button>
         <button class="io-btn btn-reset" onclick="resetCanvas()">ALL RESET</button>
     </div>
 </div>
 
-<div id="canvas-container"><svg id="connections-svg"></svg></div>
+<div id="canvas-viewport">
+    <div id="canvas-container">
+        <svg id="connections-svg"></svg>
+    </div>
+</div>
+
+<div id="zoom-controls">
+    <button class="zoom-btn" onclick="adjustZoom(-0.1)">-</button>
+    <span id="zoom-level">100%</span>
+    <button class="zoom-btn" onclick="adjustZoom(0.1)">+</button>
+    <button class="zoom-btn" onclick="resetZoom()" style="font-size: 12px; width: auto; padding: 0 8px;">1:1</button>
+</div>
 
 <script>
+    const viewport = document.getElementById('canvas-viewport');
     const container = document.getElementById('canvas-container');
+    const sidebar = document.getElementById('sidebar');
     const svg = document.getElementById('connections-svg');
+    const zoomText = document.getElementById('zoom-level');
+    
     let components = [];
     let wires = [];
     let draggingObj = null;
     let selectedTerminal = null;
-
-    // --- Undo/Redo システム ---
     let history = [];
     let historyIndex = -1;
 
+    // ズーム・パン用
+    let scale = 1.0;
+    let offsetX = 0;
+    let offsetY = 0;
+    let isPanning = false;
+    let lastMouseX, lastMouseY;
+
+    function updateTransform() {
+        container.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+        zoomText.innerText = Math.round(scale * 100) + '%';
+    }
+
+    function adjustZoom(delta, mouseX, mouseY) {
+        const oldScale = scale;
+        scale = Math.min(Math.max(scale + delta, 0.2), 3.0);
+        
+        if (mouseX !== undefined && mouseY !== undefined) {
+            const rect = viewport.getBoundingClientRect();
+            const wx = mouseX - rect.left;
+            const wy = mouseY - rect.top;
+            
+            offsetX -= (wx - offsetX) * (scale / oldScale - 1);
+            offsetY -= (wy - offsetY) * (scale / oldScale - 1);
+        }
+        updateTransform();
+    }
+
+    function resetZoom() {
+        scale = 1.0;
+        offsetX = 0;
+        offsetY = 0;
+        updateTransform();
+    }
+
+    // ホイールズーム
+    viewport.addEventListener('wheel', e => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.05 : 0.05;
+        adjustZoom(delta, e.clientX, e.clientY);
+    }, { passive: false });
+
+    // キャンバス背景の操作
+    viewport.onmousedown = e => {
+        // 中ボタン、またはパーツ以外の場所での左クリックでパン開始
+        if (e.button === 1 || e.button === 0) {
+            isPanning = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        }
+    };
+
     function saveHistory() {
-        const state = JSON.stringify({
-            components: components.map(c => ({...c, lastClick: 0})),
-            wires: wires.map(w => ({...w}))
-        });
+        const state = JSON.stringify({ components, wires });
         if (historyIndex >= 0 && history[historyIndex] === state) return;
         history = history.slice(0, historyIndex + 1);
         history.push(state);
@@ -115,290 +227,220 @@
         updateUndoButtons();
     }
 
-    function undo() {
-        if (historyIndex > 0) {
-            historyIndex--;
-            applyState(JSON.parse(history[historyIndex]));
-        }
-    }
-
-    function redo() {
-        if (historyIndex < history.length - 1) {
-            historyIndex++;
-            applyState(JSON.parse(history[historyIndex]));
-        }
-    }
+    function undo() { if (historyIndex > 0) { historyIndex--; applyState(JSON.parse(history[historyIndex])); } }
+    function redo() { if (historyIndex < history.length - 1) { historyIndex++; applyState(JSON.parse(history[historyIndex])); } }
 
     function applyState(state) {
-        components = state.components.map(c => ({ ...c }));
-        wires = state.wires.map(w => ({ ...w }));
-        // 既存の要素をクリア
+        components = state.components.map(c => ({ ...c, selected: false }));
+        wires = state.wires.map(w => ({ ...w, selected: false }));
         container.querySelectorAll('.gate, .comment-node').forEach(el => el.remove());
-        // 再描画
         components.forEach(c => renderComponent(c));
-        updateLogic();
-        updateUndoButtons();
+        updateLogic(); updateUndoButtons();
     }
 
     function updateUndoButtons() {
-        document.getElementById('undo-btn').disabled = historyIndex <= 0;
-        document.getElementById('redo-btn').disabled = historyIndex >= history.length - 1;
+        const u = document.getElementById('undo-btn');
+        const r = document.getElementById('redo-btn');
+        if (u) u.disabled = historyIndex <= 0;
+        if (r) r.disabled = historyIndex >= history.length - 1;
     }
 
-    window.addEventListener('keydown', (e) => {
-        if (e.ctrlKey || e.metaKey) {
-            if (e.key === 'z') { e.preventDefault(); undo(); }
-            if (e.key === 'y') { e.preventDefault(); redo(); }
-        }
-    });
-
-    // --- コンポーネント描画 ---
     function renderComponent(comp) {
-        if (comp.type === 'COMMENT') {
-            renderComment(comp);
-        } else {
-            renderGate(comp);
-        }
-    }
-
-    function renderComment(comp) {
         const el = document.createElement('div');
         el.id = comp.id;
-        el.className = 'comment-node';
         el.style.left = comp.x + 'px'; el.style.top = comp.y + 'px';
 
-        const textarea = document.createElement('textarea');
-        textarea.value = comp.text || "";
-        
-        const autoResize = () => {
-            textarea.style.height = 'auto';
-            textarea.style.height = (textarea.scrollHeight) + 'px';
-        };
-
-        textarea.oninput = (e) => { 
-            comp.text = e.target.value; 
-            autoResize();
-        };
-        textarea.onchange = () => saveHistory();
-        textarea.onmousedown = (e) => e.stopPropagation(); 
-        
-        el.onmousedown = (e) => {
-            const now = Date.now();
-            if (now - comp.lastClick < 300) {
-                components = components.filter(c => c.id !== comp.id);
-                el.remove(); saveHistory(); draggingObj = null; return;
-            }
-            comp.lastClick = now;
-            draggingObj = comp;
-        };
-
-        el.appendChild(textarea);
-        container.appendChild(el);
-        requestAnimationFrame(() => autoResize());
-    }
-
-    function renderGate(comp) {
-        const el = document.createElement('div');
-        el.id = comp.id; 
-        el.className = `gate ${['NOT','LIGHT'].includes(comp.type) ? 'single-in' : ''}`;
-        el.style.left = comp.x + 'px'; el.style.top = comp.y + 'px';
-
-        const label = document.createElement('span');
-        label.className = 'gate-label';
-        el.appendChild(label);
-
-        if (comp.type !== 'SWITCH') {
-            const names = (comp.type === 'NOT' || comp.type === 'LIGHT') ? ['in1'] : ['in1', 'in2'];
-            names.forEach(n => {
-                const t = document.createElement('div'); t.className = `terminal ${n}`;
-                t.onclick = (ev) => { ev.stopPropagation(); connect(comp.id, n, t); };
+        if (comp.type === 'COMMENT') {
+            el.className = 'comment-node';
+            const txt = document.createElement('textarea');
+            txt.style.cssText = "background:transparent;border:none;color:inherit;width:100%;outline:none;resize:none;display:block;padding:0;";
+            txt.value = comp.text || "";
+            txt.oninput = (e) => { comp.text = e.target.value; };
+            txt.onmousedown = (e) => e.stopPropagation();
+            el.appendChild(txt);
+        } else {
+            el.className = 'gate';
+            const lbl = document.createElement('span'); lbl.className = 'gate-label';
+            lbl.innerText = comp.type;
+            el.appendChild(lbl);
+            
+            let inputCount = 2;
+            if (comp.type === 'SWITCH') inputCount = 0;
+            else if (comp.type === 'NOT' || comp.type === 'LIGHT') inputCount = 1;
+            
+            for(let i=1; i<=inputCount; i++) {
+                const t = document.createElement('div'); t.className = `terminal in${i}`;
+                t.style.left = '-10px'; 
+                t.style.top = inputCount === 1 ? '18px' : (i === 1 ? '8px' : '28px');
+                t.onmousedown = (e) => { e.stopPropagation(); if(e.button===0) connect(comp.id, `in${i}`, t); };
                 el.appendChild(t);
-            });
-        }
-        if (comp.type !== 'LIGHT') {
-            const t = document.createElement('div'); t.className = `terminal out`;
-            t.onclick = (ev) => { ev.stopPropagation(); connect(comp.id, 'out', t); };
-            el.appendChild(t);
+            }
+            
+            if (comp.type !== 'LIGHT') {
+                const t = document.createElement('div'); t.className = 'terminal out';
+                t.style.right = '-10px'; t.style.top = '18px';
+                t.onmousedown = (e) => { e.stopPropagation(); if(e.button===0) connect(comp.id, 'out', t); };
+                el.appendChild(t);
+            }
         }
 
         el.onmousedown = (e) => {
-            if(e.target.classList.contains('terminal')) return;
-            const now = Date.now();
-            if (now - comp.lastClick < 300) {
-                components = components.filter(c => c.id !== comp.id);
-                wires = wires.filter(w => w.fromId !== comp.id && w.toId !== comp.id);
-                el.remove(); saveHistory(); updateLogic(); draggingObj = null; return;
-            }
-            comp.lastClick = now;
-            if(comp.type === 'SWITCH') { comp.value = comp.value ? 0 : 1; saveHistory(); updateLogic(); }
-            draggingObj = comp;
+            if (e.button !== 0 || e.target.classList.contains('terminal')) return;
+            e.stopPropagation(); // パーツ上ではパン（背景移動）を発生させない
+            isPanning = false;
+            
+            if (!comp.selected) { components.forEach(c => c.selected = false); comp.selected = true; updateVisuals(); }
+            draggingObj = { comp, startX: e.clientX, startY: e.clientY, targets: components.filter(c => c.selected), hasMoved: false };
+            el.classList.add('dragging');
         };
-        container.appendChild(el);
-    }
 
-    function createComponent(type, x, y) {
-        const id = 'c' + Date.now() + Math.random().toString(36).substr(2, 5);
-        const comp = { id, type, x, y, value: 0, lastClick: 0, text: type === 'COMMENT' ? "メモを入力..." : "" };
-        components.push(comp);
-        renderComponent(comp);
-        saveHistory();
-        if (type !== 'COMMENT') updateLogic();
+        el.onclick = () => {
+            if (comp.type === 'SWITCH' && !draggingObj?.hasMoved) { 
+                comp.value = comp.value ? 0 : 1; 
+                updateLogic(); 
+                saveHistory(); 
+            }
+        };
+
+        container.appendChild(el);
     }
 
     function updateLogic() {
-        components.forEach(c => { if(!['SWITCH', 'COMMENT'].includes(c.type)) c.inputs = { in1: 0, in2: 0 }; });
-        for(let i = 0; i < 10; i++) {
-            wires.forEach(w => {
-                const src = components.find(c => c.id === w.fromId);
-                const tgt = components.find(c => c.id === w.toId);
-                if(src && tgt) tgt.inputs[w.toTerm] = src.value;
-            });
-            components.forEach(c => {
-                if(c.type === 'COMMENT') return;
-                const i1 = c.inputs?.in1 || 0; const i2 = c.inputs?.in2 || 0;
-                if(c.type === 'AND') c.value = i1 && i2 ? 1 : 0;
-                else if(c.type === 'OR') c.value = i1 || i2 ? 1 : 0;
-                else if(c.type === 'NOT') c.value = i1 ? 0 : 1;
-                else if(c.type === 'NAND') c.value = (i1 && i2) ? 0 : 1;
-                else if(c.type === 'NOR') c.value = (i1 || i2) ? 0 : 1;
-                else if(c.type === 'XOR') c.value = i1 ^ i2;
-                else if(c.type === 'XNOR') c.value = i1 === i2 ? 1 : 0;
-                else if(c.type === 'LIGHT') c.value = i1;
-                
-                const el = document.getElementById(c.id);
-                if(el) {
-                    const label = el.querySelector('.gate-label');
-                    if(label) label.innerText = (c.type==='SWITCH'||c.type==='LIGHT') ? `${c.type}\n(${c.value})` : c.type;
-                    c.value ? el.classList.add('active-on') : el.classList.remove('active-on');
-                }
-            });
-        }
+        components.forEach(c => { if(c.type !== 'SWITCH' && c.type !== 'COMMENT') c.inputs = { in1: 0, in2: 0 }; });
+        wires.forEach(w => {
+            const src = components.find(c => c.id === w.fromId);
+            const tgt = components.find(c => c.id === w.toId);
+            if(src && tgt) tgt.inputs[w.toTerm] = src.value;
+        });
+        components.forEach(c => {
+            const i1 = c.inputs?.in1 || 0;
+            const i2 = c.inputs?.in2 || 0;
+            switch(c.type) {
+                case 'AND': c.value = (i1 && i2) ? 1 : 0; break;
+                case 'OR':  c.value = (i1 || i2) ? 1 : 0; break;
+                case 'NOT': c.value = i1 ? 0 : 1; break;
+                case 'NAND': c.value = (i1 && i2) ? 0 : 1; break;
+                case 'NOR':  c.value = (i1 || i2) ? 0 : 1; break;
+                case 'XOR':  c.value = (i1 !== i2) ? 1 : 0; break;
+                case 'XNOR': c.value = (i1 === i2) ? 1 : 0; break;
+                case 'LIGHT': c.value = i1; break;
+            }
+            const el = document.getElementById(c.id);
+            if(el) {
+                const label = el.querySelector('.gate-label');
+                if(label) label.innerText = c.type;
+                c.value ? el.classList.add('active-on') : el.classList.remove('active-on');
+            }
+        });
         drawWires();
+    }
+
+    function updateVisuals() {
+        components.forEach(c => {
+            const el = document.getElementById(c.id);
+            if (el) c.selected ? el.classList.add('selected') : el.classList.remove('selected');
+        });
     }
 
     function drawWires() {
         svg.innerHTML = '';
         const cr = container.getBoundingClientRect();
-        wires.forEach((w, index) => {
+        wires.forEach(w => {
             const fEl = document.getElementById(w.fromId)?.querySelector('.out');
             const tEl = document.getElementById(w.toId)?.querySelector('.' + w.toTerm);
             if(!fEl || !tEl) return;
             const r1 = fEl.getBoundingClientRect(); const r2 = tEl.getBoundingClientRect();
-            const x1 = r1.left - cr.left + 7; const y1 = r1.top - cr.top + 7;
-            const x2 = r2.left - cr.left + 7; const y2 = r2.top - cr.top + 7;
-            const midX = x1 + (x2 - x1) / 2;
-            const points = `${x1},${y1} ${midX},${y1} ${midX},${y2} ${x2},${y2}`;
-            const src = components.find(c => c.id === w.fromId);
-            const poly = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-            poly.setAttribute("points", points);
-            poly.setAttribute("class", `wire ${src && src.value ? "wire-on" : "wire-off"}`);
-            poly.onclick = (e) => { e.stopPropagation(); wires.splice(index, 1); saveHistory(); updateLogic(); };
-            svg.appendChild(poly);
+            
+            const x1 = (r1.left - cr.left) / scale + 7;
+            const y1 = (r1.top - cr.top) / scale + 7;
+            const x2 = (r2.left - cr.left) / scale + 7;
+            const y2 = (r2.top - cr.top) / scale + 7;
+            
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("x1", x1); line.setAttribute("y1", y1); line.setAttribute("x2", x2); line.setAttribute("y2", y2);
+            line.setAttribute("stroke", components.find(c=>c.id===w.fromId)?.value ? "#ff9800" : "#555"); 
+            line.setAttribute("stroke-width", 3 / scale); 
+            svg.appendChild(line);
         });
     }
 
-    async function captureCanvas() {
-        const btn = document.querySelector('.btn-export');
-        btn.innerText = "処理中...";
-        const canvas = await html2canvas(container, { backgroundColor: '#1a1c2c', scale: 2, logging: false });
-        const link = document.createElement('a');
-        link.download = 'logic-circuit.png'; link.href = canvas.toDataURL('image/png'); link.click();
-        btn.innerText = "CAPTURE IMAGE";
-    }
-
-    function resetCanvas() {
-        if (confirm("回路をすべて消去しますか？")) {
-            components = []; 
-            wires = [];
-            // 画面上の全要素を削除
-            container.querySelectorAll('.gate, .comment-node').forEach(el => el.remove());
-            svg.innerHTML = '';
-            // 履歴に保存し、ロジックを更新
-            saveHistory(); 
-            updateLogic();
+    function connect(id, term, el) {
+        if (!selectedTerminal) {
+            selectedTerminal = { id, term, el }; el.style.background = '#ff5722';
+        } else {
+            if (selectedTerminal.term === 'out' && term !== 'out') {
+                wires.push({ fromId: selectedTerminal.id, toId: id, toTerm: term });
+                saveHistory();
+            }
+            selectedTerminal.el.style.background = '#555'; selectedTerminal = null; updateLogic();
         }
     }
 
-    // 日本語（Unicode）対応の Base64 エンコード
-    function utoa(str) {
-        return btoa(unescape(encodeURIComponent(str)));
-    }
-
-    // 日本語（Unicode）対応の Base64 デコード
-    function atou(str) {
-        return decodeURIComponent(escape(atob(str)));
-    }
-
-    function exportCircuit() {
-        const data = { 
-            components: components.map(c => ({ 
-                id: c.id, type: c.type, x: c.x, y: c.y, value: c.value, text: c.text 
-            })), 
-            wires: wires 
-        };
-        const jsonStr = JSON.stringify(data);
-        document.getElementById('save-code-area').value = utoa(jsonStr);
-    }
-
-    function importCircuit() {
-        const code = document.getElementById('save-code-area').value.trim();
-        if(!code) return;
-        try {
-            const jsonStr = atou(code);
-            const data = JSON.parse(jsonStr);
-            applyState(data);
-            saveHistory();
-        } catch(e) { 
-            console.error(e);
-            alert("ロードに失敗しました。データが正しくないか、破損しています。"); 
+    window.onmousemove = e => {
+        if (isPanning) {
+            offsetX += e.clientX - lastMouseX;
+            offsetY += e.clientY - lastMouseY;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+            updateTransform();
+            return;
         }
-    }
 
-    container.ondragover = e => e.preventDefault();
-    container.ondrop = e => {
-        e.preventDefault();
-        const type = e.dataTransfer.getData('type');
-        if(!type) return;
-        const rect = container.getBoundingClientRect();
-        createComponent(type, e.clientX - rect.left - 40, e.clientY - rect.top - 25);
+        if (draggingObj) {
+            const dx = (e.clientX - draggingObj.startX) / scale;
+            const dy = (e.clientY - draggingObj.startY) / scale;
+            if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) draggingObj.hasMoved = true;
+            draggingObj.targets.forEach(c => {
+                c.x += dx; c.y += dy;
+                const el = document.getElementById(c.id);
+                if(el) { el.style.left = c.x + 'px'; el.style.top = c.y + 'px'; }
+            });
+            draggingObj.startX = e.clientX; draggingObj.startY = e.clientY;
+            const sideRect = sidebar.getBoundingClientRect();
+            sidebar.classList.toggle('drag-over-delete', e.clientX < sideRect.right);
+            drawWires();
+        }
     };
 
-    function connect(compId, termName, el) {
-        if (!selectedTerminal) {
-            selectedTerminal = { id: compId, term: termName, el: el };
-            el.classList.add('selected');
-        } else {
-            const t1 = selectedTerminal;
-            if ((t1.term === 'out' && termName !== 'out') || (t1.term !== 'out' && termName === 'out')) {
-                const outPart = t1.term === 'out' ? t1 : {id: compId, term: termName};
-                const inPart = t1.term !== 'out' ? t1 : {id: compId, term: termName};
-                if(outPart.id !== inPart.id) {
-                    wires = wires.filter(w => !(w.toId === inPart.id && w.toTerm === inPart.term));
-                    wires.push({ fromId: outPart.id, toId: inPart.id, toTerm: inPart.term });
-                    saveHistory();
-                }
+    window.onmouseup = e => {
+        isPanning = false;
+
+        if (draggingObj) {
+            const sideRect = sidebar.getBoundingClientRect();
+            if (e.clientX < sideRect.right && draggingObj.hasMoved) {
+                draggingObj.targets.forEach(c => {
+                    components = components.filter(comp => comp.id !== c.id);
+                    document.getElementById(c.id)?.remove();
+                });
+                wires = wires.filter(w => components.find(c => c.id === w.fromId) && components.find(c => c.id === w.toId));
             }
-            selectedTerminal.el.classList.remove('selected');
-            selectedTerminal = null;
-            updateLogic();
+            draggingObj.targets.forEach(c => document.getElementById(c.id)?.classList.remove('dragging'));
+            if (draggingObj.hasMoved) saveHistory();
+            draggingObj = null; sidebar.classList.remove('drag-over-delete'); updateLogic();
         }
-    }
+    };
+
+    viewport.ondragover = e => e.preventDefault();
+    viewport.ondrop = e => {
+        const type = e.dataTransfer.getData('type'); if(!type) return;
+        const rect = container.getBoundingClientRect();
+        const id = 'c' + Date.now();
+        const dropX = (e.clientX - rect.left) / scale - 40;
+        const dropY = (e.clientY - rect.top) / scale - 25;
+        const comp = { id, type, x: dropX, y: dropY, value: 0, text: "", selected: false };
+        components.push(comp); renderComponent(comp); saveHistory(); updateLogic();
+    };
 
     document.querySelectorAll('.component-template').forEach(t => {
         t.ondragstart = e => e.dataTransfer.setData('type', t.dataset.type);
     });
 
-    window.onmousemove = e => {
-        if(draggingObj) {
-            draggingObj.x += e.movementX; draggingObj.y += e.movementY;
-            const el = document.getElementById(draggingObj.id);
-            if(el) { el.style.left = draggingObj.x + 'px'; el.style.top = draggingObj.y + 'px'; drawWires(); }
-        }
-    };
-    window.onmouseup = () => { if(draggingObj) saveHistory(); draggingObj = null; };
+    function exportCircuit() { document.getElementById('save-code-area').value = btoa(unescape(encodeURIComponent(JSON.stringify({components, wires})))); }
+    function importCircuit() { try { applyState(JSON.parse(decodeURIComponent(escape(atob(document.getElementById('save-code-area').value))))); saveHistory(); } catch(e) {} }
+    function resetCanvas() { if(confirm("消去？")) { components=[]; wires=[]; container.querySelectorAll('.gate, .comment-node').forEach(el=>el.remove()); saveHistory(); updateLogic(); } }
 
-    // 初期状態を保存
     saveHistory();
+    updateTransform();
 </script>
 </body>
 </html>
