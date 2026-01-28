@@ -210,7 +210,6 @@
 
     // キャンバス背景の操作
     viewport.onmousedown = e => {
-        // 中ボタン、またはパーツ以外の場所での左クリックでパン開始
         if (e.button === 1 || e.button === 0) {
             isPanning = true;
             lastMouseX = e.clientX;
@@ -286,7 +285,7 @@
 
         el.onmousedown = (e) => {
             if (e.button !== 0 || e.target.classList.contains('terminal')) return;
-            e.stopPropagation(); // パーツ上ではパン（背景移動）を発生させない
+            e.stopPropagation();
             isPanning = false;
             
             if (!comp.selected) { components.forEach(c => c.selected = false); comp.selected = true; updateVisuals(); }
@@ -306,29 +305,58 @@
     }
 
     function updateLogic() {
-        components.forEach(c => { if(c.type !== 'SWITCH' && c.type !== 'COMMENT') c.inputs = { in1: 0, in2: 0 }; });
+        // 全コンポーネントの入力を初期化し、SWITCH以外の出力値を一旦リセット
+        components.forEach(c => {
+            if (c.type !== 'SWITCH' && c.type !== 'COMMENT') {
+                c.inputs = { in1: 0, in2: 0 };
+                // 順序依存の問題を避けるため、ここでは一旦デフォルト値を設定しない（下で再計算）
+            }
+        });
+
+        // 配線に基づき信号を伝達
         wires.forEach(w => {
             const src = components.find(c => c.id === w.fromId);
             const tgt = components.find(c => c.id === w.toId);
-            if(src && tgt) tgt.inputs[w.toTerm] = src.value;
-        });
-        components.forEach(c => {
-            const i1 = c.inputs?.in1 || 0;
-            const i2 = c.inputs?.in2 || 0;
-            switch(c.type) {
-                case 'AND': c.value = (i1 && i2) ? 1 : 0; break;
-                case 'OR':  c.value = (i1 || i2) ? 1 : 0; break;
-                case 'NOT': c.value = i1 ? 0 : 1; break;
-                case 'NAND': c.value = (i1 && i2) ? 0 : 1; break;
-                case 'NOR':  c.value = (i1 || i2) ? 0 : 1; break;
-                case 'XOR':  c.value = (i1 !== i2) ? 1 : 0; break;
-                case 'XNOR': c.value = (i1 === i2) ? 1 : 0; break;
-                case 'LIGHT': c.value = i1; break;
+            if (src && tgt && tgt.inputs) {
+                tgt.inputs[w.toTerm] = src.value || 0;
             }
+        });
+
+        // ゲートごとの論理計算（単純なシミュレーションのため複数回実行して安定させる）
+        for (let step = 0; step < 5; step++) {
+            components.forEach(c => {
+                const i1 = c.inputs?.in1 || 0;
+                const i2 = c.inputs?.in2 || 0;
+                let newValue = 0;
+                switch(c.type) {
+                    case 'AND': newValue = (i1 && i2) ? 1 : 0; break;
+                    case 'OR':  newValue = (i1 || i2) ? 1 : 0; break;
+                    case 'NOT': newValue = i1 ? 0 : 1; break;
+                    case 'NAND': newValue = (i1 && i2) ? 0 : 1; break;
+                    case 'NOR':  newValue = (i1 || i2) ? 0 : 1; break;
+                    case 'XOR':  newValue = (i1 !== i2) ? 1 : 0; break;
+                    case 'XNOR': newValue = (i1 === i2) ? 1 : 0; break;
+                    case 'LIGHT': newValue = i1; break;
+                    case 'SWITCH': newValue = c.value; break; // SWITCHは保持
+                }
+                if (c.type !== 'SWITCH' && c.type !== 'COMMENT') {
+                    c.value = newValue;
+                }
+                
+                // 次のコンポーネントへ現在の値を反映（フィードバック回路対応）
+                wires.forEach(w => {
+                    if (w.fromId === c.id) {
+                        const tgt = components.find(comp => comp.id === w.toId);
+                        if (tgt && tgt.inputs) tgt.inputs[w.toTerm] = c.value;
+                    }
+                });
+            });
+        }
+
+        // ビジュアル更新
+        components.forEach(c => {
             const el = document.getElementById(c.id);
-            if(el) {
-                const label = el.querySelector('.gate-label');
-                if(label) label.innerText = c.type;
+            if (el) {
                 c.value ? el.classList.add('active-on') : el.classList.remove('active-on');
             }
         });
@@ -368,8 +396,18 @@
         if (!selectedTerminal) {
             selectedTerminal = { id, term, el }; el.style.background = '#ff5722';
         } else {
-            if (selectedTerminal.term === 'out' && term !== 'out') {
-                wires.push({ fromId: selectedTerminal.id, toId: id, toTerm: term });
+            // 出力から入力への接続のみを許可（またはその逆）
+            const isOut1 = selectedTerminal.term === 'out';
+            const isOut2 = term === 'out';
+            
+            if (isOut1 !== isOut2) {
+                const from = isOut1 ? selectedTerminal : { id, term, el };
+                const to = isOut1 ? { id, term, el } : selectedTerminal;
+                
+                // 同じ入力端子への既存の配線を削除（1端子1入力）
+                wires = wires.filter(w => !(w.toId === to.id && w.toTerm === to.term));
+                
+                wires.push({ fromId: from.id, toId: to.id, toTerm: to.term });
                 saveHistory();
             }
             selectedTerminal.el.style.background = '#555'; selectedTerminal = null; updateLogic();
